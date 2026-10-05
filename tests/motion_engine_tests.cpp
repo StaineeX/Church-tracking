@@ -225,6 +225,23 @@ void configured_visible_region_initializes_crop()
     check_rect(engine.state().visible_region, settings.visible_region,
                "configured visible region is applied initially");
 }
+
+void unreachable_max_zoom_request_holds_last_valid_crop()
+{
+    MotionSettings settings;
+    settings.visible_region = {0.08f, 0.08f, 0.10f, 0.10f};
+    settings.max_zoom = 2.0f;
+    settings.max_pan_speed = 0.01f;
+    settings.zoom_speed = 10.0f;
+    MotionEngine engine(settings);
+    const auto before = engine.state();
+    const auto after = engine.update(std::nullopt, 0.1f);
+    check_rect(after.visible_region, before.visible_region,
+               "unreachable source-bound correction holds the last valid crop");
+    check_crop_geometry(after);
+    check(after.zoom >= settings.min_zoom && after.zoom <= settings.max_zoom,
+          "unreachable correction preserves zoom bounds");
+}
 } // namespace
 
 int main()
@@ -240,6 +257,7 @@ int main()
     extreme_zoom_settings_keep_crop_edges_distinct();
     large_gap_advances_observation_clock_without_extending_motion_step();
     configured_visible_region_initializes_crop();
+    unreachable_max_zoom_request_holds_last_valid_crop();
     if (failures)
         return EXIT_FAILURE;
     std::cout << "PASS: seven motion engine behaviors\n";

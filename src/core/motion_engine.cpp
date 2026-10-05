@@ -61,6 +61,7 @@ MotionEngine::MotionEngine(MotionSettings settings)
 
 CropState MotionEngine::update(std::optional<TargetObservation> target, float delta_seconds)
 {
+    const CropState previous = state_;
     const float raw_dt = std::isfinite(delta_seconds) && delta_seconds > 0.0f
                              ? delta_seconds : 0.0f;
     // Motion is capped so a delayed callback cannot teleport the crop.
@@ -142,6 +143,13 @@ CropState MotionEngine::update(std::optional<TargetObservation> target, float de
     half_height = 0.5f / zoom;
     state_.visible_region = {x - half_width, y - half_height, x + half_width, y + half_height};
     state_.zoom = zoom;
+    if (!is_valid(state_.visible_region) || !std::isfinite(state_.zoom) ||
+        state_.zoom < settings_.min_zoom || state_.zoom > settings_.max_zoom) {
+        // When no center is reachable at the bounded maximum zoom, retaining
+        // the last valid crop is the smallest safe correction.
+        state_.visible_region = previous.visible_region;
+        state_.zoom = previous.zoom;
+    }
     state_.tracking = accepted;
     return state_;
 }
