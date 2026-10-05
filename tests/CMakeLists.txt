@@ -7,3 +7,13 @@ add_executable(motion_engine_tests motion_engine_tests.cpp)
 target_link_libraries(motion_engine_tests PRIVATE church_director_core)
 church_director_enable_warnings(motion_engine_tests)
 add_test(NAME motion_engine COMMAND motion_engine_tests)
+
+add_executable(latest_frame_queue_tests latest_frame_queue_tests.cpp)
+target_link_libraries(latest_frame_queue_tests PRIVATE church_director_core)
+church_director_enable_warnings(latest_frame_queue_tests)
+add_test(NAME latest_frame_queue COMMAND latest_frame_queue_tests)
+
+add_executable(tracking_worker_tests tracking_worker_tests.cpp)
+target_link_libraries(tracking_worker_tests PRIVATE church_director_core)
+church_director_enable_warnings(tracking_worker_tests)
+add_test(NAME tracking_worker COMMAND tracking_worker_tests)
