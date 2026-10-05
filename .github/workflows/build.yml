@@ -1,0 +1,82 @@
+# Adapted from obsproject/obs-plugintemplate build-project.yaml at
+# 3e7d7ac3b5342cd7d9b88890b9c70b472d1520fc (GPL-2.0).
+name: Build and test
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  unit-tests:
+    name: OBS-independent unit and layout tests
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install unit toolchain
+        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build g++
+      - name: Configure
+        run: cmake --preset unit-tests
+      - name: Build
+        run: cmake --build --preset unit-tests
+      - name: Test
+        run: ctest --test-dir build/unit-tests --output-on-failure
+      - name: Preserve unit evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: church-director-unit-evidence
+          path: |
+            build/unit-tests/Testing/Temporary/LastTest.log
+            build/unit-tests/CMakeCache.txt
+          if-no-files-found: warn
+
+  plugin-linux:
+    name: OBS plugin build (Ubuntu 24.04)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install supported plugin toolchain and libobs
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p build/ci-logs
+          if ! sudo apt-get update 2>&1 | tee build/ci-logs/apt-update.log; then
+            echo 'UNAVAILABLE: Ubuntu package index could not be refreshed; no plugin build or OBS runtime claim.' | tee build/ci-logs/status.txt
+            exit 1
+          fi
+          if ! sudo apt-get install -y cmake ninja-build g++ pkg-config libobs-dev 2>&1 | tee build/ci-logs/dependencies.log; then
+            echo 'UNAVAILABLE: Ubuntu 24.04 plugin toolchain or libobs-dev could not be installed; no plugin build or OBS runtime claim.' | tee build/ci-logs/status.txt
+            exit 1
+          fi
+      - name: Configure and build plugin
+        shell: bash
+        run: |
+          set -o pipefail
+          if ! cmake --preset plugin-linux 2>&1 | tee build/ci-logs/configure.log; then
+            echo 'FAILED/UNAVAILABLE: plugin configuration failed; inspect configure.log for the exact dependency, toolchain, or project error. No plugin build claim.' | tee build/ci-logs/status.txt
+            exit 1
+          fi
+          if ! cmake --build --preset plugin-linux 2>&1 | tee build/ci-logs/build.log; then
+            echo 'FAILED: plugin compilation/link failed; inspect build.log. No OBS runtime claim.' | tee build/ci-logs/status.txt
+            exit 1
+          fi
+          if ! cmake --install build/plugin-linux --prefix "$PWD/build/plugin-stage" 2>&1 | tee build/ci-logs/install.log; then
+            echo 'FAILED: plugin stage install failed; inspect install.log. No packaged-plugin or OBS runtime claim.' | tee build/ci-logs/status.txt
+            exit 1
+          fi
+          echo 'BUILT: Linux plugin and staged install; OBS runtime smoke remains manual and unverified by CI.' | tee build/ci-logs/status.txt
+      - name: Preserve plugin build evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: church-director-plugin-linux-evidence
+          path: |
+            build/ci-logs/
+            build/plugin-linux/CMakeCache.txt
+            build/plugin-stage/
+          if-no-files-found: warn

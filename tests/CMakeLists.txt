@@ -32,3 +32,7 @@ add_test(NAME plugin_layout COMMAND "${CMAKE_COMMAND}"
   -DTEST_LINUX_MODULE_DIR=${CMAKE_INSTALL_LIBDIR}/obs-plugins
   -DTEST_DATA_DIR=${CMAKE_INSTALL_DATAROOTDIR}/obs/obs-plugins/church-director
   -P "${CMAKE_CURRENT_SOURCE_DIR}/plugin_layout_test.cmake")
+
+add_test(NAME milestone_docs COMMAND "${CMAKE_COMMAND}"
+  -DSOURCE_ROOT=${PROJECT_SOURCE_DIR}
+  -P "${CMAKE_CURRENT_SOURCE_DIR}/milestone_docs_test.cmake")
