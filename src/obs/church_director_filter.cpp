@@ -211,7 +211,9 @@ void filter_render(void *data, gs_effect_t *)
     if (!filter || !filter->source)
         return;
     obs_source_t *parent = obs_filter_get_target(filter->source);
-    if (!parent || !obs_source_get_base_width(parent) || !obs_source_get_base_height(parent)) {
+    if (!parent)
+        return;
+    if (!obs_source_get_base_width(parent) || !obs_source_get_base_height(parent)) {
         if (!filter->parent_error_logged) {
             blog(LOG_WARNING, "Church Director: parent source is unavailable or has no video size");
             filter->parent_error_logged = true;

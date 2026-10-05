@@ -18,6 +18,8 @@ target_link_libraries(tracking_worker_tests PRIVATE church_director_core)
 church_director_enable_warnings(tracking_worker_tests)
 add_test(NAME tracking_worker COMMAND tracking_worker_tests)
 
+include(GNUInstallDirs)
+
 add_executable(filter_state_tests filter_state_tests.cpp ../src/obs/filter_state.cpp)
 target_link_libraries(filter_state_tests PRIVATE church_director_core)
 church_director_enable_warnings(filter_state_tests)
@@ -27,4 +29,6 @@ add_test(NAME plugin_layout COMMAND "${CMAKE_COMMAND}"
   -DSOURCE_ROOT=${PROJECT_SOURCE_DIR}
   -DTEST_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}
   -DTEST_GENERATOR=${CMAKE_GENERATOR}
+  -DTEST_LINUX_MODULE_DIR=${CMAKE_INSTALL_LIBDIR}/obs-plugins
+  -DTEST_DATA_DIR=${CMAKE_INSTALL_DATAROOTDIR}/obs/obs-plugins/church-director
   -P "${CMAKE_CURRENT_SOURCE_DIR}/plugin_layout_test.cmake")
