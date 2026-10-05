@@ -48,6 +48,15 @@ void check_safe(const CropState &state)
     check(state.zoom >= 1 && state.zoom <= 2, "zoom stays within defaults");
 }
 
+void check_crop_geometry(const CropState &state)
+{
+    const auto &r = state.visible_region;
+    check(std::isfinite(r.left) && std::isfinite(r.top) && std::isfinite(r.right) &&
+              std::isfinite(r.bottom) && r.left >= 0 && r.top >= 0 && r.right <= 1 &&
+              r.bottom <= 1 && r.left < r.right && r.top < r.bottom,
+          "crop remains finite, bounded, and non-empty");
+}
+
 TargetObservation target(NormalizedRect bounds, std::int64_t timestamp_ns = 0,
                          float confidence = 1.0f)
 {
@@ -143,14 +152,16 @@ void invalid_rectangles_and_time_values_never_publish_non_finite_state()
         check_safe(state);
         check(!state.tracking, "invalid input is never tracked");
     }
-    check(d.timestamp_ns <= 1000000000, "huge delta is bounded");
+    check(d.timestamp_ns > 5000000000, "huge finite gap advances the observation clock safely");
 
 }
 
 void target_loss_eases_to_neutral_without_a_jump()
 {
-    MotionEngine engine;
+    MotionSettings settings;
+    MotionEngine engine(settings);
     engine.update(target({0.85f, 0.45f, 0.95f, 0.55f}, 1000000000), 1.0f);
+    engine.update(target({0.85f, 0.45f, 0.95f, 0.55f}, 2000000000), 1.0f);
     const auto before = engine.state();
     const auto after = engine.update(std::nullopt, 0.1f);
     check(!after.tracking, "missing target reports fallback");
@@ -158,9 +169,61 @@ void target_loss_eases_to_neutral_without_a_jump()
           "zoom eases toward neutral at bounded speed");
     const float before_x = (before.visible_region.left + before.visible_region.right) * 0.5f;
     const float after_x = (after.visible_region.left + after.visible_region.right) * 0.5f;
-    check(std::fabs(after_x - before_x) <= 0.1001f,
-          "fallback pan does not jump");
+    check(near(before_x, 0.75f) && near(after_x, 0.65f),
+          "fallback center moves deterministically toward neutral");
+    check(after_x < before_x && std::fabs(after_x - before_x) <= 0.1001f,
+          "fallback pan moves toward neutral without a jump");
     check_safe(after);
+}
+
+void zoom_and_pan_limits_hold_when_source_bounds_change()
+{
+    MotionSettings settings;
+    settings.max_pan_speed = 0.01f;
+    settings.zoom_speed = 10.0f;
+    settings.stale_timeout = 100.0f;
+    MotionEngine engine(settings);
+    for (int i = 0; i < 25; ++i)
+        engine.update(target({0.9f, 0.45f, 0.99f, 0.55f}), 1.0f);
+    const auto before = engine.state();
+    const auto after = engine.update(std::nullopt, 0.1f);
+    const float before_x = (before.visible_region.left + before.visible_region.right) * 0.5f;
+    const float after_x = (after.visible_region.left + after.visible_region.right) * 0.5f;
+    check(near(before_x, 0.75f) && near(before.zoom, 2.0f),
+          "regression starts at the bounded edge state");
+    check(after_x <= before_x && before_x - after_x <= 0.0011f,
+          "zoom-out cannot exceed the pan limit");
+    check_crop_geometry(after);
+}
+
+void extreme_zoom_settings_keep_crop_edges_distinct()
+{
+    MotionSettings settings;
+    settings.dead_zone = {0.0f, 0.0f, 1.0f, 1.0f};
+    settings.max_zoom = 1e9f;
+    settings.zoom_speed = 1e9f;
+    MotionEngine engine(settings);
+    const float previous_edge = std::nextafter(0.5f, 0.0f);
+    const auto state = engine.update(target({previous_edge, previous_edge, 0.5f, 0.5f}), 0.1f);
+    check_crop_geometry(state);
+}
+
+void large_gap_advances_observation_clock_without_extending_motion_step()
+{
+    MotionEngine engine;
+    const auto state = engine.update(target({0.45f, 0.45f, 0.55f, 0.55f}, 5000000000), 5.0f);
+    check(state.timestamp_ns == 5000000000 && state.tracking,
+          "observation clock advances across a large callback gap");
+    check(near(state.zoom, 1.5f), "motion step remains capped at one second");
+}
+
+void configured_visible_region_initializes_crop()
+{
+    MotionSettings settings;
+    settings.visible_region = {0.25f, 0.25f, 0.75f, 0.75f};
+    MotionEngine engine(settings);
+    check_rect(engine.state().visible_region, settings.visible_region,
+               "configured visible region is applied initially");
 }
 } // namespace
 
@@ -173,6 +236,10 @@ int main()
     low_confidence_and_stale_targets_hold_safe_state();
     invalid_rectangles_and_time_values_never_publish_non_finite_state();
     target_loss_eases_to_neutral_without_a_jump();
+    zoom_and_pan_limits_hold_when_source_bounds_change();
+    extreme_zoom_settings_keep_crop_edges_distinct();
+    large_gap_advances_observation_clock_without_extending_motion_step();
+    configured_visible_region_initializes_crop();
     if (failures)
         return EXIT_FAILURE;
     std::cout << "PASS: seven motion engine behaviors\n";
