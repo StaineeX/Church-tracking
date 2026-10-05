@@ -16,7 +16,7 @@ function(church_director_enable_warnings target)
   endif()
 endfunction()
 
-add_library(church_director_core STATIC src/core.cpp)
+add_library(church_director_core STATIC src/core.cpp src/core/geometry.cpp src/core/motion_engine.cpp)
 set_target_properties(church_director_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_include_directories(church_director_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
 church_director_enable_warnings(church_director_core)

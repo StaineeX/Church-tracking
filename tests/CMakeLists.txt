@@ -2,3 +2,8 @@ add_executable(church_director_tests test_main.cpp)
 target_link_libraries(church_director_tests PRIVATE church_director_core)
 church_director_enable_warnings(church_director_tests)
 add_test(NAME bootstrap_test_executable_runs COMMAND church_director_tests)
+
+add_executable(motion_engine_tests motion_engine_tests.cpp)
+target_link_libraries(motion_engine_tests PRIVATE church_director_core)
+church_director_enable_warnings(motion_engine_tests)
+add_test(NAME motion_engine COMMAND motion_engine_tests)
