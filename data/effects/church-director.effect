@@ -1,0 +1,43 @@
+// Copyright (C) 2026 Church Director contributors
+// SPDX-License-Identifier: GPL-2.0-or-later
+uniform float4x4 ViewProj;
+uniform texture2d image;
+uniform float4 visible_region;
+uniform float zoom;
+
+sampler_state textureSampler {
+    Filter = Linear;
+    AddressU = Clamp;
+    AddressV = Clamp;
+};
+
+struct VertData {
+    float4 pos : POSITION;
+    float2 uv : TEXCOORD0;
+};
+
+VertData VSDefault(VertData input)
+{
+    VertData output;
+    output.pos = mul(float4(input.pos.xyz, 1.0), ViewProj);
+    output.uv = input.uv;
+    return output;
+}
+
+float4 PSCrop(VertData input) : TARGET
+{
+    float2 region_size = max(visible_region.zw - visible_region.xy, float2(0.0, 0.0));
+    float2 size = min(region_size, float2(1.0 / max(zoom, 1.0), 1.0 / max(zoom, 1.0)));
+    float2 origin = visible_region.xy + (region_size - size) * 0.5;
+    float2 uv = saturate(origin + input.uv * size);
+    return image.Sample(textureSampler, uv);
+}
+
+technique Draw
+{
+    pass
+    {
+        vertex_shader = VSDefault(v_in);
+        pixel_shader = PSCrop(v_in);
+    }
+}

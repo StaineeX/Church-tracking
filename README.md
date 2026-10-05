@@ -1,10 +1,10 @@
 # Church Director for OBS
 
-Church Director is an OBS Studio plugin project for camera framing during live services. This initial bootstrap contains the OBS-independent core library placeholder and a dependency-free test harness; plugin integration is optional.
+Church Director is an OBS Studio video filter for camera framing during live services. This milestone uses a deterministic synthetic target stream to drive a virtual crop and zoom over an existing OBS source. It does not analyze camera pixels.
 
 ## Unit tests
 
-Requirements: CMake 3.21 or newer and Ninja. These checks do not require OBS, a GPU, a camera, models, or network access.
+Requirements: CMake 3.21 or newer, Ninja, and a C++20 compiler. These checks do not require OBS, a GPU, a camera, models, or network access. The suite includes the OBS-independent filter-state seam and an install-layout fixture.
 
 ```sh
 cmake --preset unit-tests
@@ -14,9 +14,9 @@ ctest --test-dir build/unit-tests --output-on-failure
 
 ## OBS plugin build
 
-Use the host-specific `plugin-windows`, `plugin-linux`, or `plugin-macos` preset where its generator is available. Install the OBS development package for your platform first. The plugin presets turn `BUILD_OBS_PLUGIN=ON`; configuration will report a missing OBS development package rather than silently producing an OBS build.
+Use the host-specific `plugin-windows`, `plugin-linux`, or `plugin-macos` preset where its generator is available. Install the OBS development package for your platform first. The plugin presets turn `BUILD_OBS_PLUGIN=ON`; configuration fails if the generator or `libobs` development package is unavailable. Unit tests and the layout fixture do not constitute a real plugin build or OBS smoke test.
 
-The OBS module entry point is only a bootstrap stub. Filter behavior and runtime dependencies are outside this task.
+The registered video filter id is `church_director_filter`. Add it to an existing video source, leave **Synthetic target mode** enabled, and use the OBS source preview to observe the crop following a timestamp-driven synthetic target. Disabling the filter bypasses the crop and stops synthetic work. The shader asset is installed as `effects/church-director.effect` and the English locale as `locale/en-US.ini` under the module's data directory. Minimum zoom is fixed at `1.0` by the current motion engine; the other motion controls are editable. A camera-pixel detector and an OBS runtime smoke test remain outside this task.
 
 ## Licensing
 

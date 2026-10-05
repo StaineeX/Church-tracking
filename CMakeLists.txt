@@ -27,6 +27,7 @@ church_director_enable_warnings(church_director_core)
 if(BUILD_OBS_PLUGIN)
   include(cmake/obs-plugin.cmake)
   church_director_add_obs_plugin(church_director_plugin)
+  church_director_install_obs_plugin(church_director_plugin "${CMAKE_CURRENT_SOURCE_DIR}")
 endif()
 
 if(BUILD_TESTING)
