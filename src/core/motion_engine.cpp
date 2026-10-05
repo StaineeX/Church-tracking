@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <utility>
 
 namespace church {
 namespace {
@@ -61,30 +62,47 @@ MotionEngine::MotionEngine(MotionSettings settings)
 
 CropState MotionEngine::update(std::optional<TargetObservation> target, float delta_seconds)
 {
-    const CropState previous = state_;
     const float raw_dt = std::isfinite(delta_seconds) && delta_seconds > 0.0f
                              ? delta_seconds : 0.0f;
-    // Motion is capped so a delayed callback cannot teleport the crop.
-    const float dt = std::min(raw_dt, 1.0f);
     constexpr auto max_clock = std::numeric_limits<std::int64_t>::max() - 1000000000;
     constexpr long double nanoseconds_per_second = 1000000000.0L;
     const long double available_seconds =
         (static_cast<long double>(max_clock) - static_cast<long double>(state_.timestamp_ns)) /
         nanoseconds_per_second;
     if (static_cast<long double>(raw_dt) >= available_seconds) {
-        state_.timestamp_ns = max_clock;
+        return update_at(std::move(target), raw_dt, max_clock);
     } else {
         const auto elapsed_ns = static_cast<std::int64_t>(std::llround(
             static_cast<long double>(raw_dt) * nanoseconds_per_second));
-        state_.timestamp_ns += elapsed_ns;
+        return update_at(std::move(target), raw_dt, state_.timestamp_ns + elapsed_ns);
     }
+}
 
-    const bool accepted = target && is_valid(target->bounds) &&
-                          std::isfinite(target->confidence) &&
-                          target->confidence >= settings_.confidence_threshold &&
-                          target->timestamp_ns >= 0 && target->timestamp_ns <= state_.timestamp_ns &&
-                          static_cast<double>(state_.timestamp_ns - target->timestamp_ns) <=
-                              static_cast<double>(settings_.stale_timeout) * 1e9;
+bool MotionEngine::accepts_observation(const TargetObservation &target,
+                                       std::int64_t timestamp_ns) const
+{
+    return timestamp_ns >= 0 && is_valid(target.bounds) &&
+           std::isfinite(target.confidence) &&
+           target.confidence >= settings_.confidence_threshold && target.timestamp_ns >= 0 &&
+           target.timestamp_ns <= timestamp_ns &&
+           static_cast<double>(timestamp_ns - target.timestamp_ns) <=
+               static_cast<double>(settings_.stale_timeout) * 1e9;
+}
+
+CropState MotionEngine::update_at(std::optional<TargetObservation> target,
+                                  float motion_delta_seconds, std::int64_t timestamp_ns)
+{
+    const CropState previous = state_;
+    if (timestamp_ns < state_.timestamp_ns)
+        timestamp_ns = state_.timestamp_ns;
+    state_.timestamp_ns = timestamp_ns;
+
+    // Motion is capped so a delayed callback cannot teleport the crop.
+    const float raw_dt = std::isfinite(motion_delta_seconds) && motion_delta_seconds > 0.0f
+                             ? motion_delta_seconds : 0.0f;
+    const float dt = std::min(raw_dt, 1.0f);
+
+    const bool accepted = target && accepts_observation(*target, state_.timestamp_ns);
 
     const float desired_zoom = accepted
         ? std::clamp(std::min((settings_.dead_zone.right - settings_.dead_zone.left) /

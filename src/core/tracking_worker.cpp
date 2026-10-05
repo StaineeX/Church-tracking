@@ -65,17 +65,19 @@ void TrackingWorker::run()
             auto detections = detector_->detect(frame);
             if (detections.empty()) {
                 tracker_->reset();
-            } else {
+            } else if (motion_.accepts_observation(detections.front(), relative)) {
                 target = detections.front();
                 tracker_->set_target(*target);
+            } else {
+                tracker_->reset();
             }
         } else {
             target = tracker_->update(frame);
         }
-        const float full_delta_seconds = static_cast<float>(
-            static_cast<double>(relative - previous) / 1e9);
+        const float motion_delta_seconds = static_cast<float>(std::min(
+            static_cast<double>(relative - previous) / 1e9, 1.0));
         previous = relative;
-        snapshots_.publish(motion_.update(target, full_delta_seconds));
+        snapshots_.publish(motion_.update_at(target, motion_delta_seconds, relative));
     }
 }
 

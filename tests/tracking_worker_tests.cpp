@@ -42,6 +42,18 @@ bool wait_for_timestamp(church::TrackingWorker &worker, std::int64_t timestamp_n
     return false;
 }
 
+bool wait_for_exact_timestamp(church::TrackingWorker &worker, std::int64_t timestamp_ns)
+{
+    const auto deadline = std::chrono::steady_clock::now() + 2s;
+    while (std::chrono::steady_clock::now() < deadline) {
+        auto state = worker.snapshot();
+        if (state && state->timestamp_ns >= timestamp_ns)
+            return state->timestamp_ns == timestamp_ns;
+        std::this_thread::sleep_for(1ms);
+    }
+    return false;
+}
+
 bool wait_for_tracking(church::TrackingWorker &worker)
 {
     const auto deadline = std::chrono::steady_clock::now() + 2s;
@@ -129,6 +141,52 @@ void worker_tracker_holds_target_between_detections_then_resets_on_loss()
         check(state && state->tracking == (i < 3),
               "tracker holds target until detection reports loss, then resets");
     }
+    worker.stop();
+}
+
+void worker_preserves_exact_ordinary_frame_timestamps()
+{
+    church::TrackingWorker worker;
+    worker.start();
+    constexpr std::int64_t frame_period_ns = 33333333;
+    worker.submit(frame(0));
+    check(wait_for_tracking(worker), "first ordinary cadence frame processed");
+    for (int frame_number = 1; frame_number < 5; ++frame_number) {
+        worker.submit(frame(frame_number * frame_period_ns));
+        check(wait_for_exact_timestamp(worker, frame_number * frame_period_ns),
+              "ordinary frame cadence keeps exact nanosecond timestamp");
+    }
+    worker.stop();
+}
+
+class FutureDetector final : public church::Detector {
+public:
+    std::vector<church::TargetObservation> detect(const church::VideoFrame &frame) override
+    {
+        ++calls;
+        return {{{0.45f, 0.45f, 0.55f, 0.55f}, 1.0f, frame.timestamp_ns + 1}};
+    }
+
+    std::atomic<int> calls{0};
+};
+
+void worker_does_not_seed_tracker_from_future_detection()
+{
+    auto detector = std::make_unique<FutureDetector>();
+    auto *detector_ptr = detector.get();
+    church::TrackingWorker worker(std::move(detector));
+    worker.start();
+    worker.submit(frame(1000000000));
+    const auto deadline = std::chrono::steady_clock::now() + 2s;
+    while (detector_ptr->calls.load() == 0 && std::chrono::steady_clock::now() < deadline)
+        std::this_thread::sleep_for(1ms);
+    check(detector_ptr->calls.load() == 1, "future detection frame reached detector");
+    std::this_thread::sleep_for(1ms);
+    worker.submit(frame(1033333333));
+    check(wait_for_exact_timestamp(worker, 33333333), "following frame processed");
+    auto state = worker.snapshot();
+    check(state && !state->tracking,
+          "future detection is filtered before tracker seeding");
     worker.stop();
 }
 
@@ -246,6 +304,8 @@ int main()
 {
     worker_publishes_synthetic_crop_state_from_submitted_frames();
     worker_tracker_holds_target_between_detections_then_resets_on_loss();
+    worker_preserves_exact_ordinary_frame_timestamps();
+    worker_does_not_seed_tracker_from_future_detection();
     worker_uses_full_elapsed_time_for_stale_observations();
     worker_saturates_extreme_relative_timestamps();
     worker_drops_old_frames_when_processing_is_delayed();
