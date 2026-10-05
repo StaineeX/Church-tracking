@@ -267,6 +267,8 @@ git commit -m "feat: add OBS smart camera filter and crop shader"
 - Create: `.github/workflows/build.yml`
 - Create: `docs/smoke-tests/obs-synthetic-camera.md`
 - Create: `docs/development/building.md`
+- Create: `tests/milestone_docs_test.cmake`
+- Modify: `tests/CMakeLists.txt`
 - Modify: `README.md`
 - Modify: `THIRD_PARTY_NOTICES.md`
 
