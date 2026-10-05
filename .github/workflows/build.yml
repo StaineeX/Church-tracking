@@ -76,7 +76,12 @@ jobs:
         with:
           name: church-director-plugin-linux-evidence
           path: |
-            build/ci-logs/
+            build/ci-logs/configure.log
+            build/ci-logs/build.log
+            build/ci-logs/install.log
+            build/ci-logs/status.txt
+            build/ci-logs/dependencies.log
+            build/ci-logs/apt-update.log
             build/plugin-linux/CMakeCache.txt
             build/plugin-stage/
           if-no-files-found: warn
