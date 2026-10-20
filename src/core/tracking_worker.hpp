@@ -8,6 +8,7 @@
 #include "core/tracker.hpp"
 
 #include <atomic>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <thread>
@@ -27,6 +28,8 @@ public:
     bool submit(VideoFrame frame);
     void invalidate();
     std::shared_ptr<const CropState> snapshot() const;
+    // Test-only seam; configure it before start(). Production leaves it empty.
+    void set_before_publish_callback_for_testing(std::function<void()> callback);
     void stop();
 
 private:
@@ -39,6 +42,7 @@ private:
     MotionEngine motion_;
     std::thread thread_;
     mutable std::mutex snapshot_mutex_;
+    std::function<void()> before_publish_callback_;
     std::atomic<std::uint64_t> invalidation_epoch_{0};
 };
 

@@ -1,7 +1,6 @@
 #include "core/tracking_worker.hpp"
 
 #include <atomic>
-#include <barrier>
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
@@ -108,29 +107,15 @@ private:
     std::shared_ptr<Gate> gate_;
 };
 
-class InFlightEpochDetector final : public church::Detector {
+class ResetProbeDetector final : public church::Detector {
 public:
-    explicit InFlightEpochDetector(std::shared_ptr<Gate> gate) : gate_(std::move(gate)) {}
-
     std::vector<church::TargetObservation> detect(const church::VideoFrame &frame) override
     {
-        const int call = ++calls;
-        if (call == 2) {
-            std::unique_lock lock(gate_->mutex);
-            gate_->entered = true;
-            gate_->cv.notify_all();
-            gate_->cv.wait(lock, [&] { return gate_->release; });
-            return {{{0.80f, 0.40f, 0.90f, 0.60f}, 1.0f, frame.timestamp_ns}};
-        }
-        if (call == 1)
-            return {{{0.80f, 0.40f, 0.90f, 0.60f}, 1.0f, frame.timestamp_ns}};
-        return {};
+        ++calls;
+        return {{{0.80f, 0.40f, 0.90f, 0.60f}, 1.0f, frame.timestamp_ns}};
     }
 
     std::atomic<int> calls{0};
-
-private:
-    std::shared_ptr<Gate> gate_;
 };
 
 class CarryingTracker final : public church::Tracker {
@@ -151,10 +136,37 @@ private:
 
 void worker_resets_state_before_accepting_frame_after_inflight_invalidation()
 {
-    auto gate = std::make_shared<Gate>();
-    auto detector = std::make_unique<InFlightEpochDetector>(gate);
+    auto detector = std::make_unique<ResetProbeDetector>();
     auto *detector_ptr = detector.get();
     church::TrackingWorker worker(std::move(detector), std::make_unique<CarryingTracker>());
+    std::atomic<bool> arm_before_publish{false};
+    std::atomic<int> hook_calls{0};
+    std::atomic<int> hook_invalidations{0};
+    std::mutex hook_mutex;
+    std::condition_variable hook_cv;
+    bool first_hook_entered = false;
+    bool second_hook_entered = false;
+    bool release_first_hook = false;
+    bool release_second_hook = false;
+    worker.set_before_publish_callback_for_testing([&] {
+        if (!arm_before_publish.load(std::memory_order_acquire))
+            return;
+        const int hook_call = hook_calls.fetch_add(1, std::memory_order_acq_rel) + 1;
+        std::unique_lock lock(hook_mutex);
+        if (hook_call == 1) {
+            lock.unlock();
+            worker.invalidate();
+            hook_invalidations.fetch_add(1, std::memory_order_release);
+            lock.lock();
+            first_hook_entered = true;
+            hook_cv.notify_all();
+            hook_cv.wait(lock, [&] { return release_first_hook; });
+        } else if (hook_call == 2) {
+            second_hook_entered = true;
+            hook_cv.notify_all();
+            hook_cv.wait(lock, [&] { return release_second_hook; });
+        }
+    });
     worker.start();
     worker.submit(frame(0));
     check(wait_for_tracking(worker), "old epoch starts tracking");
@@ -166,41 +178,13 @@ void worker_resets_state_before_accepting_frame_after_inflight_invalidation()
     check(old_crop && old_crop->tracking && old_crop->zoom > 1.0f,
           "old epoch leaves non-neutral motion state");
 
+    arm_before_publish.store(true, std::memory_order_release);
     worker.submit(frame(3000000000));
     {
-        std::unique_lock lock(gate->mutex);
-        check(gate->cv.wait_for(lock, 2s, [&] { return gate->entered; }),
-              "detector blocks inside the old epoch");
+        std::unique_lock lock(hook_mutex);
+        check(hook_cv.wait_for(lock, 2s, [&] { return first_hook_entered; }),
+              "before-publish hook runs after the ordinary epoch check");
     }
-    std::atomic<bool> invalidated{false};
-    std::atomic<bool> stale_after_invalidation{false};
-    std::atomic<bool> stop_reader{false};
-    std::thread reader([&] {
-        while (!stop_reader.load(std::memory_order_acquire)) {
-            if (!invalidated.load(std::memory_order_acquire))
-                continue;
-            const auto state = worker.snapshot();
-            if (state && state->tracking)
-                stale_after_invalidation.store(true, std::memory_order_release);
-        }
-    });
-    std::barrier start_race(3);
-    std::thread release([&] {
-        start_race.arrive_and_wait();
-        {
-            std::lock_guard lock(gate->mutex);
-            gate->release = true;
-        }
-        gate->cv.notify_all();
-    });
-    std::thread invalidate([&] {
-        start_race.arrive_and_wait();
-        worker.invalidate();
-        invalidated.store(true, std::memory_order_release);
-    });
-    start_race.arrive_and_wait();
-    release.join();
-    invalidate.join();
 
     const auto invalidated_crop = worker.snapshot();
     check(invalidated_crop && !invalidated_crop->tracking && invalidated_crop->zoom == 1.0f &&
@@ -208,24 +192,52 @@ void worker_resets_state_before_accepting_frame_after_inflight_invalidation()
               invalidated_crop->visible_region.top == 0.0f &&
               invalidated_crop->visible_region.right == 1.0f &&
               invalidated_crop->visible_region.bottom == 1.0f,
-          "blocking invalidation publishes a neutral snapshot immediately");
-    worker.submit(frame(4000000000));
+          "before-publish invalidation leaves a neutral snapshot");
+    check(hook_invalidations.load(std::memory_order_acquire) == 1,
+          "before-publish hook invalidates exactly once");
+
+    check(worker.submit(frame(4000000000)), "new epoch frame queues while publication is paused");
+    {
+        std::lock_guard lock(hook_mutex);
+        release_first_hook = true;
+    }
+    hook_cv.notify_all();
+
+    {
+        std::unique_lock lock(hook_mutex);
+        check(hook_cv.wait_for(lock, 2s, [&] { return second_hook_entered; }),
+              "worker reaches the next publication hook");
+    }
+    const auto post_hook_crop = worker.snapshot();
+    check(post_hook_crop && !post_hook_crop->tracking && post_hook_crop->zoom == 1.0f &&
+              post_hook_crop->visible_region.left == 0.0f &&
+              post_hook_crop->visible_region.top == 0.0f &&
+              post_hook_crop->visible_region.right == 1.0f &&
+              post_hook_crop->visible_region.bottom == 1.0f,
+          "snapshot remains neutral after invalidation and before the next publish");
+    check(hook_invalidations.load(std::memory_order_acquire) == 1,
+          "before-publish hook invalidates exactly once");
+    {
+        std::lock_guard lock(hook_mutex);
+        release_second_hook = true;
+    }
+    hook_cv.notify_all();
 
     const auto deadline = std::chrono::steady_clock::now() + 2s;
     while (detector_ptr->calls.load() < 3 && std::chrono::steady_clock::now() < deadline)
         std::this_thread::sleep_for(1ms);
-    stop_reader.store(true, std::memory_order_release);
-    reader.join();
-    check(!stale_after_invalidation.load(std::memory_order_acquire),
-          "stale work cannot be returned after blocking invalidation");
-    const auto fresh_crop = worker.snapshot();
     check(detector_ptr->calls.load() == 3, "new epoch starts with a fresh detector cadence");
-    check(fresh_crop && !fresh_crop->tracking && fresh_crop->zoom == 1.0f &&
-              fresh_crop->visible_region.left == 0.0f &&
-              fresh_crop->visible_region.top == 0.0f &&
-              fresh_crop->visible_region.right == 1.0f &&
-              fresh_crop->visible_region.bottom == 1.0f,
-          "frame after invalidation starts from neutral state");
+    bool fresh_epoch_published = false;
+    while (std::chrono::steady_clock::now() < deadline) {
+        const auto fresh_crop = worker.snapshot();
+        if (fresh_crop && fresh_crop->tracking && fresh_crop->timestamp_ns == 0) {
+            fresh_epoch_published = true;
+            break;
+        }
+        std::this_thread::sleep_for(1ms);
+    }
+    check(fresh_epoch_published,
+          "subsequent valid work starts from reset state instead of stale crop state");
     worker.stop();
 }
 

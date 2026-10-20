@@ -109,6 +109,11 @@ std::shared_ptr<const CropState> TrackingWorker::snapshot() const
     return snapshots_.read();
 }
 
+void TrackingWorker::set_before_publish_callback_for_testing(std::function<void()> callback)
+{
+    before_publish_callback_ = std::move(callback);
+}
+
 void TrackingWorker::stop()
 {
     queue_.close();
@@ -179,6 +184,8 @@ void TrackingWorker::run()
             reset_for_epoch(post_motion_epoch);
             continue;
         }
+        if (before_publish_callback_)
+            before_publish_callback_();
         std::uint64_t publication_epoch = 0;
         {
             std::lock_guard lock(snapshot_mutex_);
