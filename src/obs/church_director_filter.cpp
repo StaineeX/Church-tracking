@@ -48,6 +48,7 @@ struct FilterContext {
     bool settings_error_logged = false;
     bool parent_error_logged = false;
     bool crop_error_logged = false;
+    bool frame_conversion_error_logged = false;
 };
 
 std::optional<church::VideoFrame> copy_obs_frame(const obs_source_frame &source)
@@ -235,8 +236,15 @@ obs_source_frame *filter_video(void *data, obs_source_frame *frame)
     auto owned = copy_obs_frame(*frame);
     if (owned)
         state->submit(std::move(*owned));
-    else
+    else {
+        if (!filter->frame_conversion_error_logged) {
+            blog(LOG_WARNING,
+                 "Church Director: unable to convert frame for tracking (format=%d, dimensions=%ux%u); tracking reset",
+                 static_cast<int>(frame->format), frame->width, frame->height);
+            filter->frame_conversion_error_logged = true;
+        }
         state->invalidate();
+    }
     return frame;
 }
 

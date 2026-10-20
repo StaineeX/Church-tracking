@@ -6,6 +6,10 @@ if(NOT EXISTS "${SOURCE_ROOT}/data/effects/church-director.effect" OR
    NOT EXISTS "${SOURCE_ROOT}/data/locale/en-US.ini")
   message(FATAL_ERROR "OBS effect or locale asset is missing")
 endif()
+file(READ "${SOURCE_ROOT}/data/locale/en-US.ini" locale_text)
+if(NOT locale_text MATCHES "ChurchDirector.Filter=Church Director Smart Camera")
+  message(FATAL_ERROR "OBS filter locale label must identify the Church Director Smart Camera")
+endif()
 
 file(READ "${SOURCE_ROOT}/src/obs/church_director_filter.cpp" filter_source)
 string(REPLACE "\n" " " filter_source_one_line "${filter_source}")
@@ -15,6 +19,9 @@ foreach(contract IN ITEMS "filter_video(void *data, obs_source_frame *frame)"
                           "VIDEO_FORMAT_RGBA" "VIDEO_FORMAT_BGRA"
                           "VIDEO_FORMAT_BGRX" "VIDEO_FORMAT_BGR3"
                           "VIDEO_FORMAT_NV12" "VIDEO_FORMAT_I420"
+                          "frame_conversion_error_logged"
+                          "unable to convert frame for tracking"
+                          "format=%d" "dimensions=%ux%u"
                           "state->invalidate();")
   string(FIND "${filter_source}" "${contract}" contract_offset)
   if(contract_offset LESS 0)

@@ -8,10 +8,13 @@ set(real_smoke "${SOURCE_ROOT}/docs/smoke-tests/obs-real-camera.md")
 set(readme "${SOURCE_ROOT}/README.md")
 set(building "${SOURCE_ROOT}/docs/development/building.md")
 set(notices "${SOURCE_ROOT}/THIRD_PARTY_NOTICES.md")
+set(spec "${SOURCE_ROOT}/docs/superpowers/specs/2026-10-04-church-director-obs-design.md")
+set(plan "${SOURCE_ROOT}/docs/superpowers/plans/2026-10-19-real-person-tracking.md")
 set(obs_plugin_cmake "${SOURCE_ROOT}/cmake/obs-plugin.cmake")
 set(presets "${SOURCE_ROOT}/CMakePresets.json")
 foreach(path IN ITEMS "${workflow}" "${smoke}" "${real_smoke}" "${readme}"
-                      "${building}" "${notices}" "${obs_plugin_cmake}" "${presets}")
+                      "${building}" "${notices}" "${spec}" "${plan}"
+                      "${obs_plugin_cmake}" "${presets}")
   if(NOT EXISTS "${path}")
     message(FATAL_ERROR "Missing milestone evidence: ${path}")
   endif()
@@ -109,6 +112,20 @@ file(READ "${notices}" notices_text)
 foreach(required IN ITEMS "OpenCV 4" "OpenCV >= 4.5" "Apache-2.0" "HOG" "no model weights"
                           "Package-specific" "does not redistribute")
   require_text("${notices_text}" "${required}" "Third-party OpenCV notice")
+endforeach()
+
+file(READ "${spec}" spec_text)
+foreach(required IN ITEMS "real OpenCV HOG person tracking" "default vertical slice"
+                          "Synthetic mode remains available for deterministic tests"
+                          "real camera smoke test")
+  require_text("${spec_text}" "${required}" "Approved real-mode design ruling")
+endforeach()
+
+file(READ "${plan}" plan_text)
+foreach(required IN ITEMS "real OpenCV HOG person tracking" "current default"
+                          "synthetic mode remains available for deterministic tests"
+                          "predicted target" "throwing detector" "frame conversion warning")
+  require_text("${plan_text}" "${required}" "Real tracking review-fix plan")
 endforeach()
 
 file(READ "${obs_plugin_cmake}" obs_plugin_text)

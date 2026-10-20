@@ -16,6 +16,7 @@ public:
     void reset() override;
     void set_target(TargetObservation target) override;
     std::optional<TargetObservation> current_target() const override { return last_observation_; }
+    std::optional<TargetObservation> predict(std::int64_t timestamp_ns) const override;
     std::optional<TargetObservation> update(const VideoFrame &frame) override;
 
 private:

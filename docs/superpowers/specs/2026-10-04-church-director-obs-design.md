@@ -1,6 +1,8 @@
 # Church Director for OBS — Design Specification
 
-**Status:** Approved design; implementation plan pending review
+**Status:** Approved design; real-person tracking vertical slice in implementation
+
+**Recorded ruling:** The default vertical slice is real OpenCV HOG person tracking. Synthetic mode remains available for deterministic tests and diagnostics; the real camera smoke test is the runtime acceptance path.
 
 **Repository:** `StaineeX/Church-tracking`
 
@@ -14,7 +16,7 @@ Church Director for OBS is an OBS Studio plugin that keeps a live church-service
 
 - The target repository was empty at audit time; no product code, tests, license, or master specification was available.
 - The approved first deliverable is a functional vertical slice, not the complete product.
-- The first slice must work without a physical camera by using deterministic synthetic frames/targets in tests and a synthetic target mode in the plugin smoke path.
+- The current/default vertical slice is real OpenCV HOG person tracking on camera pixels. It must work without a physical camera in unit tests by using deterministic synthetic frames/targets; synthetic target mode remains available for deterministic tests and diagnostics, but is not the product default or runtime acceptance path.
 - OBS rendering must never wait for detector, tracker, model loading, or I/O work.
 - Worker code must not call OBS graphics APIs or retain OBS-owned frame buffers after the callback that supplied them.
 - The design must preserve third-party license and attribution notices. The initial project license is expected to align with the OBS plugin template/OBS ecosystem, but distribution and dependency licensing must be reviewed before release.
@@ -24,19 +26,19 @@ Church Director for OBS is an OBS Studio plugin that keeps a live church-service
 
 ### Milestone 1 — Smart Camera vertical slice
 
-Deliver a native C++ OBS video filter that can be attached to an existing camera source and visibly applies a virtual crop/zoom driven by a deterministic target stream. It includes:
+Deliver a native C++ OBS video filter that can be attached to an existing camera source and visibly applies a virtual crop/zoom driven by real OpenCV HOG person detections and a bounded tracker. It includes:
 
 1. CMake/plugin bootstrap based on the official OBS plugin template.
 2. Source/filter lifecycle and settings plumbing.
 3. Frame sampling with a bounded, latest-frame-wins queue.
-4. Detector and tracker interfaces plus deterministic synthetic implementations.
+4. Detector and tracker interfaces, with OpenCV HOG person detection and PersonTracker as the default implementation plus deterministic synthetic implementations for tests and diagnostics.
 5. Immutable target snapshots published from the worker.
 6. Dead-zone motion engine with smoothing, speed/zoom limits, crop clamping, stale-target handling, and a neutral fallback.
 7. OBS shader-based crop/pan/zoom rendering.
 8. Unit tests for geometry, motion, queue behavior, and worker lifecycle.
-9. A build check and a documented OBS smoke test that proves module loading, filter creation, and visible movement without a capture device.
+9. A build check and a documented real-camera OBS smoke test that proves module loading, filter creation, person detection, and visible movement; the dependency-free test suite remains the no-camera proof for core behavior.
 
-Milestone 1 does not require a production ML model, cloud service, camera vendor SDK, Bible UI, service UI, STT provider, or AI provider.
+Milestone 1 does not require downloadable production ML weights, cloud service, camera vendor SDK, Bible UI, service UI, STT provider, or AI provider. OpenCV's built-in HOG coefficients are the real-mode detector baseline.
 
 ### Milestone 2 — Bible and service browser source
 
@@ -109,6 +111,11 @@ class Tracker {
 public:
     virtual ~Tracker() = default;
     virtual void reset() = 0;
+    virtual void set_target(TargetObservation target) = 0;
+    virtual std::optional<TargetObservation> predict(std::int64_t timestamp_ns) const
+    {
+        return std::nullopt;
+    }
     virtual std::optional<TargetObservation> update(const VideoFrame&) = 0;
 };
 
@@ -169,7 +176,8 @@ Run without OBS, GPU, camera, model weights, or network. Cover:
 - Load the module in an OBS test profile.
 - Add the filter to a deterministic test source.
 - Confirm the filter renders the source unchanged in neutral mode.
-- Enable synthetic target motion and confirm the visible crop follows it without blocking the render path.
+- With a camera source and visible person, confirm the default HOG detection and bounded crop/pan/zoom follow the target without blocking the render path.
+- Keep synthetic target mode explicit and use it only for deterministic tests or diagnostics.
 - Stop/remove the filter repeatedly and confirm clean shutdown without crashes or leaked worker threads.
 
 If the host cannot run OBS or its graphics backend, report the exact unavailable check; do not replace it with a claim based only on compiling the C++ unit tests.
@@ -184,7 +192,7 @@ Milestone 3 will define interfaces for `AudioInput`, `Transcriber`, `IntentExtra
 
 1. **Missing master Markdown:** the prior conversation and local filesystem did not contain the artifact. This spec reconstructs only the approved scope and records assumptions so they can be amended before implementation.
 2. **Filter versus custom source:** use a filter for Milestone 1 because it composes with any existing OBS camera source and keeps capture/device concerns out of the first slice. A custom source remains a future option if the product later needs to own camera acquisition.
-3. **Detector dependency:** use synthetic detector/tracker implementations first. This keeps the vertical slice buildable and testable without model weights; real OpenCV/ONNX adapters are a later, separately licensed milestone.
+3. **Detector dependency:** real OpenCV HOG detection and PersonTracker are the current vertical slice/default because the user explicitly requested real person tracking and approved this design. Synthetic detector/tracker implementations remain for deterministic tests and diagnostics; they do not define the product default. OpenCV's built-in coefficients avoid model downloads and cloud dependencies.
 4. **No GPU work on worker:** graphics operations stay on OBS's render path; the worker publishes only CPU-side state.
 5. **No external writes yet:** the branch is local and has no upstream commit or pull request. Push, PR creation, and merge remain separate actions after a stable milestone and explicit user direction at that point.
 
@@ -194,7 +202,7 @@ Milestone 1 is ready for review only when all of the following have evidence:
 
 - the plugin configures and builds in at least one supported environment;
 - unit tests pass with zero failures and cover every motion/queue edge case listed above;
-- an OBS smoke test demonstrates filter loading and visible synthetic pan/crop/zoom, or the unavailable OBS check is reported precisely;
+- an OBS real-camera smoke test demonstrates filter loading, person detection, and visible pan/crop/zoom, or the unavailable OBS check is reported precisely;
 - worker shutdown and filter removal are exercised repeatedly;
 - license/attribution files and dependency notes are present;
 - commits are small and focused, and a review has examined the branch before a PR is proposed.

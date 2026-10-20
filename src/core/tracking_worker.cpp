@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <exception>
 #include <limits>
 #include <optional>
 #include <utility>
@@ -127,8 +128,14 @@ void TrackingWorker::run()
     std::int64_t previous = 0;
     unsigned processed = 0;
     auto active_epoch = invalidation_epoch_.load(std::memory_order_acquire);
+    const auto reset_tracker = [&] {
+        try {
+            tracker_->reset();
+        } catch (...) {
+        }
+    };
     const auto reset_for_epoch = [&](std::uint64_t epoch) {
-        tracker_->reset();
+        reset_tracker();
         motion_.reset();
         origin.reset();
         previous = 0;
@@ -159,16 +166,29 @@ void TrackingWorker::run()
             continue;
         frame.timestamp_ns = relative;
         std::optional<TargetObservation> target;
-        if (processed++ % 3 == 0) {
-            auto detections = detector_->detect(frame);
-            target = select_detection(detections, tracker_->current_target(), motion_, relative);
-            if (target) {
-                tracker_->set_target(*target);
+        try {
+            if (processed++ % 3 == 0) {
+                auto detections = detector_->detect(frame);
+                const auto predicted_target = tracker_->predict(relative);
+                target = select_detection(detections, predicted_target, motion_, relative);
+                if (target) {
+                    tracker_->set_target(*target);
+                } else {
+                    target = predicted_target;
+                    if (!target)
+                        tracker_->reset();
+                }
             } else {
-                tracker_->reset();
+                target = tracker_->update(frame);
             }
-        } else {
-            target = tracker_->update(frame);
+        } catch (const std::exception &) {
+            reset_tracker();
+            motion_.reset();
+            target.reset();
+        } catch (...) {
+            reset_tracker();
+            motion_.reset();
+            target.reset();
         }
         const auto post_tracking_epoch = invalidation_epoch_.load(std::memory_order_acquire);
         if (frame_epoch != post_tracking_epoch) {

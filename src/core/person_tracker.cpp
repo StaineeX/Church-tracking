@@ -79,16 +79,15 @@ void PersonTracker::set_target(TargetObservation target)
     last_observation_ = target;
 }
 
-std::optional<TargetObservation> PersonTracker::update(const VideoFrame &frame)
+std::optional<TargetObservation> PersonTracker::predict(std::int64_t timestamp_ns) const
 {
     if (!last_observation_)
         return std::nullopt;
-    if (frame.timestamp_ns <= last_observation_->timestamp_ns)
+    if (timestamp_ns <= last_observation_->timestamp_ns)
         return last_observation_;
 
-    const auto delta_ns = elapsed_ns(last_observation_->timestamp_ns, frame.timestamp_ns);
+    const auto delta_ns = elapsed_ns(last_observation_->timestamp_ns, timestamp_ns);
     if (delta_ns > static_cast<std::uint64_t>(max_prediction_ns_)) {
-        reset();
         return std::nullopt;
     }
 
@@ -105,7 +104,15 @@ std::optional<TargetObservation> PersonTracker::update(const VideoFrame &frame)
     auto prediction = *last_observation_;
     prediction.bounds = {clamped_x - half_width, clamped_y - half_height,
                          clamped_x + half_width, clamped_y + half_height};
-    prediction.timestamp_ns = frame.timestamp_ns;
+    prediction.timestamp_ns = timestamp_ns;
+    return prediction;
+}
+
+std::optional<TargetObservation> PersonTracker::update(const VideoFrame &frame)
+{
+    const auto prediction = predict(frame.timestamp_ns);
+    if (!prediction && last_observation_)
+        reset();
     return prediction;
 }
 

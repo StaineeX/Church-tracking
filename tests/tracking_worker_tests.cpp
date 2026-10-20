@@ -1,4 +1,5 @@
 #include "core/tracking_worker.hpp"
+#include "core/person_tracker.hpp"
 
 #include <atomic>
 #include <chrono>
@@ -10,6 +11,7 @@
 #include <limits>
 #include <memory>
 #include <mutex>
+#include <stdexcept>
 #include <thread>
 #include <vector>
 
@@ -263,17 +265,18 @@ private:
 
 void worker_tracker_holds_target_between_detections_then_resets_on_loss()
 {
-    church::TrackingWorker worker(std::make_unique<OneTargetDetector>());
+    church::TrackingWorker worker(std::make_unique<OneTargetDetector>(),
+                                  std::make_unique<church::PersonTracker>());
     worker.start();
     worker.submit(frame(10));
     check(wait_for_tracking(worker), "detector supplied first target");
-    for (int i = 1; i <= 4; ++i) {
-        worker.submit(frame(10 + i * 1000000000LL));
-        check(wait_for_timestamp(worker, i * 1000000000LL),
+    for (int i = 1; i <= 6; ++i) {
+        worker.submit(frame(10 + i * 100000000LL));
+        check(wait_for_timestamp(worker, i * 100000000LL),
               "tracker processed next frame");
         auto state = worker.snapshot();
-        check(state && state->tracking == (i < 3),
-              "tracker holds target until detection reports loss, then resets");
+        check(state && state->tracking == (i < 6),
+              "tracker predicts through a missed pass, then resets after its horizon");
     }
     worker.stop();
 }
@@ -318,6 +321,113 @@ public:
 private:
     int calls_ = 0;
 };
+
+class CrossingDetector final : public church::Detector {
+public:
+    std::vector<church::TargetObservation> detect(const church::VideoFrame &frame) override
+    {
+        switch (calls_++) {
+        case 0:
+            return {{{0.15f, 0.2f, 0.25f, 0.8f}, 0.80f, frame.timestamp_ns},
+                    {{0.75f, 0.2f, 0.85f, 0.8f}, 0.60f, frame.timestamp_ns}};
+        case 1:
+            return {{{0.35f, 0.2f, 0.45f, 0.8f}, 0.70f, frame.timestamp_ns},
+                    {{0.55f, 0.2f, 0.65f, 0.8f}, 0.99f, frame.timestamp_ns}};
+        default:
+            return {{{0.55f, 0.2f, 0.65f, 0.8f}, 0.70f, frame.timestamp_ns},
+                    {{0.35f, 0.2f, 0.45f, 0.8f}, 0.99f, frame.timestamp_ns}};
+        }
+    }
+
+private:
+    int calls_ = 0;
+};
+
+class RecordingPersonTracker final : public church::Tracker {
+public:
+    void reset() override { tracker_.reset(); }
+    void set_target(church::TargetObservation target) override
+    {
+        selected.push_back(target);
+        tracker_.set_target(target);
+    }
+    std::optional<church::TargetObservation> current_target() const override
+    {
+        return tracker_.current_target();
+    }
+    std::optional<church::TargetObservation> predict(std::int64_t timestamp_ns) const override
+    {
+        return tracker_.predict(timestamp_ns);
+    }
+    std::optional<church::TargetObservation> update(const church::VideoFrame &frame) override
+    {
+        return tracker_.update(frame);
+    }
+
+    std::vector<church::TargetObservation> selected;
+
+private:
+    church::PersonTracker tracker_;
+};
+
+void worker_uses_predicted_target_when_people_cross()
+{
+    auto tracker = std::make_unique<RecordingPersonTracker>();
+    auto *tracker_ptr = tracker.get();
+    church::TrackingWorker worker(std::make_unique<CrossingDetector>(), std::move(tracker));
+    worker.start();
+    worker.submit(frame(0));
+    check(wait_for_tracking(worker), "crossing detector supplies the initial target");
+    for (int frame_number = 1; frame_number <= 6; ++frame_number) {
+        worker.submit(frame(frame_number * 100'000'000LL));
+        check(wait_for_timestamp(worker, frame_number * 100'000'000LL),
+              "crossing sequence advances to the next frame");
+    }
+    check(tracker_ptr->selected.size() == 3, "crossing sequence reaches all detector passes");
+    check(tracker_ptr->selected.size() == 3 && tracker_ptr->selected[2].bounds.left > 0.5f,
+          "predicted current bounds keep the original person after the crossing");
+    worker.stop();
+}
+
+class ThrowingDetector final : public church::Detector {
+public:
+    std::vector<church::TargetObservation> detect(const church::VideoFrame &frame) override
+    {
+        const int call = calls.fetch_add(1);
+        if (call == 0)
+            throw std::runtime_error("detector failure");
+        if (call == 1)
+            throw 7;
+        return {{{0.45f, 0.45f, 0.55f, 0.55f}, 1.0f, frame.timestamp_ns}};
+    }
+
+    std::atomic<int> calls{0};
+};
+
+void worker_recovers_from_detector_exceptions()
+{
+    auto detector = std::make_unique<ThrowingDetector>();
+    auto *detector_ptr = detector.get();
+    church::TrackingWorker worker(std::move(detector),
+                                  std::make_unique<church::PersonTracker>());
+    worker.start();
+    worker.submit(frame(0));
+    const auto deadline = std::chrono::steady_clock::now() + 2s;
+    while (detector_ptr->calls.load() < 1 && std::chrono::steady_clock::now() < deadline)
+        std::this_thread::sleep_for(1ms);
+    check(detector_ptr->calls.load() == 1, "throwing detector was invoked");
+    auto after_failure = worker.snapshot();
+    check(after_failure && !after_failure->tracking && after_failure->zoom == 1.0f,
+          "detector failure publishes a neutral crop");
+    for (int frame_number = 1; frame_number <= 6; ++frame_number) {
+        worker.submit(frame(frame_number * 100'000'000LL));
+        check(wait_for_timestamp(worker, frame_number * 100'000'000LL),
+              "worker continues after detector exception");
+    }
+    check(detector_ptr->calls.load() == 3, "worker reaches a later detector pass");
+    check(worker.snapshot()->tracking, "worker resumes tracking after detector exceptions");
+    worker.stop();
+}
 
 class RecordingTracker final : public church::Tracker {
 public:
@@ -497,6 +607,8 @@ int main()
     worker_preserves_exact_ordinary_frame_timestamps();
     worker_does_not_seed_tracker_from_future_detection();
     worker_associates_detection_with_existing_target();
+    worker_uses_predicted_target_when_people_cross();
+    worker_recovers_from_detector_exceptions();
     worker_uses_full_elapsed_time_for_stale_observations();
     worker_saturates_extreme_relative_timestamps();
     worker_drops_old_frames_when_processing_is_delayed();

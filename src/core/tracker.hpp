@@ -5,6 +5,7 @@
 #include "core/frame_types.hpp"
 #include "core/motion_engine.hpp"
 
+#include <cstdint>
 #include <optional>
 
 namespace church {
@@ -15,6 +16,13 @@ public:
     virtual void reset() = 0;
     virtual void set_target(TargetObservation target) = 0;
     virtual std::optional<TargetObservation> current_target() const { return std::nullopt; }
+    // Compatibility default: trackers without timestamp prediction keep their
+    // current target available for association.
+    virtual std::optional<TargetObservation> predict(std::int64_t timestamp_ns) const
+    {
+        (void)timestamp_ns;
+        return current_target();
+    }
     virtual std::optional<TargetObservation> update(const VideoFrame &frame) = 0;
 };
 

@@ -42,6 +42,20 @@ void tracker_predicts_constant_velocity_from_timestamps()
           "prediction carries the current frame timestamp");
 }
 
+void tracker_predicts_current_bounds_for_crossing_association()
+{
+    church::PersonTracker tracker;
+    tracker.set_target({{0.15f, 0.2f, 0.25f, 0.8f}, 0.9f, 0});
+    tracker.set_target({{0.35f, 0.2f, 0.45f, 0.8f}, 0.9f, 300'000'000});
+
+    const auto predicted = tracker.predict(600'000'000);
+    check(predicted.has_value(), "tracker predicts a target for association");
+    check(predicted && std::fabs(center_x(*predicted) - 0.6f) < 0.0001f,
+          "association prediction follows the target across a crossing distractor");
+    check(predicted && predicted->timestamp_ns == 600'000'000,
+          "association prediction uses the supplied timestamp");
+}
+
 void tracker_clamps_predicted_bounds_to_normalized_source()
 {
     church::PersonTracker tracker;
@@ -87,6 +101,7 @@ void tracker_reset_clears_target_and_velocity()
 int main()
 {
     tracker_predicts_constant_velocity_from_timestamps();
+    tracker_predicts_current_bounds_for_crossing_association();
     tracker_clamps_predicted_bounds_to_normalized_source();
     tracker_stops_prediction_after_a_cumulative_gap();
     tracker_reset_clears_target_and_velocity();
