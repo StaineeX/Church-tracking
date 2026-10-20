@@ -21,6 +21,7 @@ public:
     FilterState &operator=(const FilterState &) = delete;
 
     bool submit(VideoFrame frame);
+    void invalidate();
     bool submit_synthetic(std::int64_t timestamp_ns);
     bool synthetic_mode() const { return synthetic_mode_; }
     bool active() const { return worker_ != nullptr; }

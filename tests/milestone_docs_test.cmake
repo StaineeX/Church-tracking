@@ -58,6 +58,12 @@ require_text("${plugin_job}" "dependencies.log" "Plugin job dependency evidence"
 require_text("${plugin_job}" "BUILD: PASSED: Linux plugin compiled" "Plugin job build evidence")
 require_text("${plugin_job}" "RUNTIME: UNAVAILABLE: OBS has no graphical runtime smoke session in CI" "Plugin job runtime evidence")
 
+require_text("${ci}" "  opencv-tests:" "OpenCV detector test job")
+require_text("${ci}" "name: OBS-independent OpenCV detector tests" "OpenCV detector test job")
+require_text("${ci}" "cmake --preset opencv-tests" "OpenCV detector test job")
+require_text("${ci}" "cmake --build --preset opencv-tests" "OpenCV detector test job")
+require_text("${ci}" "ctest --test-dir build/opencv-tests -R person_detector --output-on-failure" "OpenCV detector test job")
+
 file(READ "${smoke}" procedure)
 foreach(required IN ITEMS "church_director_filter" "Synthetic target mode"
                           "clean profile" "test pattern" "initial zoom-in"
@@ -74,7 +80,10 @@ file(READ "${real_smoke}" real_procedure)
 foreach(required IN ITEMS "church_director_filter" "clean OBS profile"
                           "camera source" "Real person tracking" "default"
                           "RGBA" "BGRA" "BGRX" "BGR3" "NV12" "I420"
-                          "detection" "pan" "crop" "zoom" "multiple people"
+                          "detection" "pan" "crop" "zoom"
+                          "zoom motion only when the target framing requires it"
+                          "multiple people" "Windows camera privacy" "macOS camera privacy"
+                          "Linux device/portal permissions"
                           "no-person" "disable" "remove" "re-add"
                           "OBS log" "preview" "unavailable" "unit/layout")
   string(FIND "${real_procedure}" "${required}" offset)
@@ -91,17 +100,19 @@ endforeach()
 
 file(READ "${building}" building_text)
 foreach(required IN ITEMS "OpenCV" "libobs" "no model download" "Windows"
-                          "macOS" "unavailable" "obs-real-camera.md")
+                          "macOS" "OpenCV >= 4.5" "camera privacy"
+                          "Linux device/portal permissions" "unavailable" "obs-real-camera.md")
   require_text("${building_text}" "${required}" "Build guide real-mode documentation")
 endforeach()
 
 file(READ "${notices}" notices_text)
-foreach(required IN ITEMS "OpenCV 4" "Apache-2.0" "HOG" "no model weights")
+foreach(required IN ITEMS "OpenCV 4" "OpenCV >= 4.5" "Apache-2.0" "HOG" "no model weights"
+                          "Package-specific" "does not redistribute")
   require_text("${notices_text}" "${required}" "Third-party OpenCV notice")
 endforeach()
 
 file(READ "${obs_plugin_cmake}" obs_plugin_text)
-foreach(required IN ITEMS "find_package(OpenCV REQUIRED" "core" "imgproc" "objdetect"
+foreach(required IN ITEMS "find_package(OpenCV 4.5 REQUIRED" "core" "imgproc" "objdetect"
                           "OpenCV_LIBS")
   require_text("${obs_plugin_text}" "${required}" "OBS plugin OpenCV linkage")
 endforeach()
@@ -109,3 +120,5 @@ endforeach()
 file(READ "${presets}" preset_text)
 require_text("${preset_text}" "\"BUILD_OBS_PLUGIN\": \"OFF\"" "Unit preset dependency boundary")
 require_text("${preset_text}" "\"BUILD_OBS_PLUGIN\": \"ON\"" "Plugin preset dependency boundary")
+require_text("${preset_text}" "\"BUILD_OPENCV_TESTS\": \"OFF\"" "Unit preset OpenCV boundary")
+require_text("${preset_text}" "\"BUILD_OPENCV_TESTS\": \"ON\"" "OpenCV test preset dependency boundary")

@@ -30,6 +30,12 @@ bool FilterState::submit(VideoFrame frame)
     return worker_ && !synthetic_mode_ && worker_->submit(std::move(frame));
 }
 
+void FilterState::invalidate()
+{
+    if (worker_ && !synthetic_mode_)
+        worker_->invalidate();
+}
+
 bool FilterState::submit_synthetic(std::int64_t timestamp_ns)
 {
     if (!worker_ || !synthetic_mode_ || timestamp_ns < 0)
@@ -42,7 +48,7 @@ bool FilterState::submit_synthetic(std::int64_t timestamp_ns)
 
 CropState FilterState::crop() const
 {
-    if (worker_) {
+    if (worker_ && worker_->snapshot_current()) {
         const auto latest = worker_->snapshot();
         if (latest)
             return *latest;

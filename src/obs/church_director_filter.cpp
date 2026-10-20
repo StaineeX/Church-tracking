@@ -235,6 +235,8 @@ obs_source_frame *filter_video(void *data, obs_source_frame *frame)
     auto owned = copy_obs_frame(*frame);
     if (owned)
         state->submit(std::move(*owned));
+    else
+        state->invalidate();
     return frame;
 }
 

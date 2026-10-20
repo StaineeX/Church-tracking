@@ -107,6 +107,27 @@ void real_mode_accepts_owned_frames_and_publishes_injected_tracking()
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     check(filter.crop().tracking, "real mode publishes a tracking crop from owned pixels");
 }
+
+void invalid_real_frame_clears_the_last_tracking_crop()
+{
+    auto detector = std::make_unique<InjectedDetector>();
+    church::FilterState filter(true, false, {}, std::move(detector),
+                               std::make_unique<InjectedTracker>());
+    church::VideoFrame frame{{10, 20, 30, 255}, 1, 1, 4, church::PixelFormat::rgba8,
+                             1'000'000'000};
+    check(filter.submit(std::move(frame)), "real mode accepts a frame before invalidation");
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    while (!filter.crop().tracking && std::chrono::steady_clock::now() < deadline)
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    check(filter.crop().tracking, "tracking crop exists before invalidation");
+
+    filter.invalidate();
+    const auto crop = filter.crop();
+    check(crop.visible_region.left == 0.0f && crop.visible_region.top == 0.0f &&
+              crop.visible_region.right == 1.0f && crop.visible_region.bottom == 1.0f &&
+              crop.zoom == 1.0f && !crop.tracking,
+          "invalid real frame clears the last tracking crop to neutral");
+}
 } // namespace
 
 int main()
@@ -116,5 +137,6 @@ int main()
     non_synthetic_filter_skips_motion_work();
     synthetic_timestamps_drive_the_worker();
     real_mode_accepts_owned_frames_and_publishes_injected_tracking();
+    invalid_real_frame_clears_the_last_tracking_crop();
     return failures ? EXIT_FAILURE : EXIT_SUCCESS;
 }

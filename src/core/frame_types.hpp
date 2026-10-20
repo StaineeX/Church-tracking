@@ -16,6 +16,9 @@ struct VideoFrame {
     std::uint32_t stride = 0;
     PixelFormat format = PixelFormat::rgba8;
     std::int64_t timestamp_ns = 0;
+    // Internal worker generation. A frame submitted before real-frame
+    // invalidation must not republish its stale crop afterward.
+    std::uint64_t processing_epoch = 0;
 };
 
 } // namespace church

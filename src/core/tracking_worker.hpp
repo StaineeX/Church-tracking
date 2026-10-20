@@ -7,6 +7,7 @@
 #include "core/snapshot_store.hpp"
 #include "core/tracker.hpp"
 
+#include <atomic>
 #include <memory>
 #include <thread>
 
@@ -23,7 +24,9 @@ public:
 
     void start();
     bool submit(VideoFrame frame);
+    void invalidate();
     std::shared_ptr<const CropState> snapshot() const;
+    bool snapshot_current() const;
     void stop();
 
 private:
@@ -35,6 +38,8 @@ private:
     std::unique_ptr<Tracker> tracker_;
     MotionEngine motion_;
     std::thread thread_;
+    std::atomic<std::uint64_t> invalidation_epoch_{0};
+    std::atomic<std::uint64_t> processed_epoch_{0};
 };
 
 } // namespace church

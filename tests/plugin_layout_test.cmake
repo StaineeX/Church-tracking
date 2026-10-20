@@ -14,14 +14,15 @@ foreach(contract IN ITEMS "filter_video(void *data, obs_source_frame *frame)"
                           "obs_data_set_default_bool(settings, synthetic_key, false);"
                           "VIDEO_FORMAT_RGBA" "VIDEO_FORMAT_BGRA"
                           "VIDEO_FORMAT_BGRX" "VIDEO_FORMAT_BGR3"
-                          "VIDEO_FORMAT_NV12" "VIDEO_FORMAT_I420")
+                          "VIDEO_FORMAT_NV12" "VIDEO_FORMAT_I420"
+                          "state->invalidate();")
   string(FIND "${filter_source}" "${contract}" contract_offset)
   if(contract_offset LESS 0)
     message(FATAL_ERROR "OBS filter layout is missing required contract: ${contract}")
   endif()
 endforeach()
 file(READ "${SOURCE_ROOT}/CMakeLists.txt" root_cmake)
-foreach(contract IN ITEMS "find_package(OpenCV REQUIRED COMPONENTS core imgproc objdetect)")
+foreach(contract IN ITEMS "find_package(OpenCV 4.5 REQUIRED COMPONENTS core imgproc objdetect)")
   string(FIND "${root_cmake}" "${contract}" contract_offset)
   if(contract_offset LESS 0)
     message(FATAL_ERROR "CMake is missing plugin-required OpenCV contract: ${contract}")

@@ -28,7 +28,7 @@ target_link_libraries(person_tracker_tests PRIVATE church_director_core)
 church_director_enable_warnings(person_tracker_tests)
 add_test(NAME person_tracker COMMAND person_tracker_tests)
 
-if(OpenCV_FOUND)
+if(BUILD_OPENCV_TESTS)
   add_executable(person_detector_tests person_detector_tests.cpp)
   target_include_directories(person_detector_tests PRIVATE ${OpenCV_INCLUDE_DIRS})
   target_link_libraries(person_detector_tests PRIVATE church_director_core ${OpenCV_LIBS})

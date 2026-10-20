@@ -90,9 +90,25 @@ void TrackingWorker::start()
         thread_ = std::thread(&TrackingWorker::run, this);
 }
 
-bool TrackingWorker::submit(VideoFrame frame) { return queue_.submit(std::move(frame)); }
+bool TrackingWorker::submit(VideoFrame frame)
+{
+    frame.processing_epoch = invalidation_epoch_.load(std::memory_order_acquire);
+    return queue_.submit(std::move(frame));
+}
+
+void TrackingWorker::invalidate()
+{
+    invalidation_epoch_.fetch_add(1, std::memory_order_acq_rel);
+    snapshots_.publish(CropState{});
+}
 
 std::shared_ptr<const CropState> TrackingWorker::snapshot() const { return snapshots_.read(); }
+
+bool TrackingWorker::snapshot_current() const
+{
+    return processed_epoch_.load(std::memory_order_acquire) ==
+           invalidation_epoch_.load(std::memory_order_acquire);
+}
 
 void TrackingWorker::stop()
 {
@@ -108,6 +124,9 @@ void TrackingWorker::run()
     unsigned processed = 0;
     VideoFrame frame;
     while (queue_.wait_take(frame)) {
+        const auto frame_epoch = frame.processing_epoch;
+        if (frame_epoch != invalidation_epoch_.load(std::memory_order_acquire))
+            continue;
         if (!origin)
             origin = frame.timestamp_ns;
         // A late, out-of-order frame cannot turn the motion clock backward.
@@ -135,7 +154,11 @@ void TrackingWorker::run()
         const float motion_delta_seconds = static_cast<float>(std::min(
             static_cast<double>(relative - previous) / 1e9, 1.0));
         previous = relative;
-        snapshots_.publish(motion_.update_at(target, motion_delta_seconds, relative));
+        const auto crop = motion_.update_at(target, motion_delta_seconds, relative);
+        if (frame_epoch != invalidation_epoch_.load(std::memory_order_acquire))
+            continue;
+        snapshots_.publish(crop);
+        processed_epoch_.store(frame_epoch, std::memory_order_release);
     }
 }
 

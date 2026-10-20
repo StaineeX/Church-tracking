@@ -11,7 +11,7 @@ set(CHURCH_DIRECTOR_LINUX_MODULE_DESTINATION "${CMAKE_INSTALL_LIBDIR}/obs-plugin
 
 function(church_director_add_obs_plugin target)
   find_package(libobs REQUIRED)
-  find_package(OpenCV REQUIRED COMPONENTS core imgproc objdetect)
+  find_package(OpenCV 4.5 REQUIRED COMPONENTS core imgproc objdetect)
   add_library(${target} MODULE
     "${PROJECT_SOURCE_DIR}/src/obs/plugin_main.cpp"
     "${PROJECT_SOURCE_DIR}/src/obs/church_director_filter.cpp"

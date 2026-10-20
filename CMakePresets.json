@@ -9,7 +9,20 @@
       "binaryDir": "${sourceDir}/build/unit-tests",
       "cacheVariables": {
         "BUILD_OBS_PLUGIN": "OFF",
-        "BUILD_TESTING": "ON"
+        "BUILD_TESTING": "ON",
+        "BUILD_OPENCV_TESTS": "OFF"
+      }
+    },
+    {
+      "name": "opencv-tests",
+      "displayName": "OBS-independent OpenCV detector tests (Linux, Ninja)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/opencv-tests",
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Linux" },
+      "cacheVariables": {
+        "BUILD_OBS_PLUGIN": "OFF",
+        "BUILD_TESTING": "ON",
+        "BUILD_OPENCV_TESTS": "ON"
       }
     },
     {
@@ -40,6 +53,7 @@
   ],
   "buildPresets": [
     { "name": "unit-tests", "configurePreset": "unit-tests" },
+    { "name": "opencv-tests", "configurePreset": "opencv-tests" },
     { "name": "plugin-windows", "configurePreset": "plugin-windows", "configuration": "RelWithDebInfo" },
     { "name": "plugin-linux", "configurePreset": "plugin-linux" },
     { "name": "plugin-macos", "configurePreset": "plugin-macos", "configuration": "RelWithDebInfo" }
