@@ -1,10 +1,10 @@
 # Church Director for OBS
 
-Church Director is an OBS Studio video filter for camera framing during live services. This milestone uses a deterministic synthetic target stream to drive a virtual crop and zoom over an existing OBS source. It does not analyze camera pixels.
+Church Director is an OBS Studio video filter for camera framing during live services. Real person tracking is the default mode: it copies supported OBS camera frames into an asynchronous worker, uses OpenCV's built-in HOG person detector, and drives a bounded pan, crop, and zoom state. Synthetic target mode remains available for deterministic diagnostics and tests.
 
 ## Build and verification
 
-Requirements: CMake 3.21 or newer, Ninja, and a C++20 compiler. These checks do not require OBS, a GPU, a camera, models, or network access. The suite includes the OBS-independent filter-state seam and an install-layout fixture.
+Requirements for the dependency-free unit preset: CMake 3.21 or newer, Ninja, and a C++20 compiler. These checks do not require OBS, OpenCV, a GPU, a camera, models, or network access. The suite includes the OBS-independent filter-state seam and an install-layout fixture.
 
 ```sh
 cmake --preset unit-tests
@@ -16,9 +16,9 @@ See [the build guide](docs/development/building.md) for host-specific plugin bui
 
 ## OBS plugin build
 
-Use the host-specific `plugin-windows`, `plugin-linux`, or `plugin-macos` preset where its generator is available. Install the OBS development package for your platform first. The plugin presets turn `BUILD_OBS_PLUGIN=ON`; configuration fails if the generator or `libobs` development package is unavailable. Unit tests and the layout fixture do not constitute a real plugin build or OBS smoke test.
+Use the host-specific `plugin-windows`, `plugin-linux`, or `plugin-macos` preset where its generator is available. Install OBS/libobs development files and OpenCV 4 (core, imgproc, and objdetect) for your platform first. The plugin presets turn `BUILD_OBS_PLUGIN=ON`; configuration fails if the generator, `libobs`, or OpenCV is unavailable. No model download, network access, or cloud credential is required. Unit tests and the layout fixture do not constitute a real plugin build or OBS smoke test.
 
-The registered video filter id is `church_director_filter`. Add it to an existing video source, leave **Synthetic target mode** enabled, and use the OBS source preview to observe the crop following a timestamp-driven synthetic target. Disabling the filter bypasses the crop and stops synthetic work. On Windows and Linux, the effect and English locale are installed under the module data directory. On macOS, the module is installed as `church-director.plugin` with those resources inside `Contents/Resources/effects` and `Contents/Resources/locale`, matching the OBS plugin bundle layout. Linux modules use `${CMAKE_INSTALL_LIBDIR}/obs-plugins` by default, including configured multiarch library directories; override it with `CHURCH_DIRECTOR_LINUX_MODULE_DESTINATION` when packaging requires a different destination. Minimum zoom is fixed at `1.0` by the current motion engine; the other motion controls are editable. A camera-pixel detector remains outside this milestone. Follow [the manual OBS synthetic-camera smoke test](docs/smoke-tests/obs-synthetic-camera.md) to record real runtime behavior, repeated cleanup, and logs; it has not been exercised by the unit suite or CI.
+The registered video filter id is `church_director_filter`. Add it to a camera source and leave the default **Real person tracking** mode selected. The worker accepts RGBA/BGRA/BGRX/BGR3, NV12, and I420 frames when their planes and strides are valid; unsupported or malformed frames fail closed to neutral tracking. HOG is CPU-based and works best with visible, upright people at useful scale; it is not a face recognizer and may miss occluded, tiny, or unusual poses. Disabling the filter bypasses the crop and stops tracking work. On Windows and Linux, the effect and English locale are installed under the module data directory. On macOS, the module is installed as `church-director.plugin` with those resources inside `Contents/Resources/effects` and `Contents/Resources/locale`, matching the OBS plugin bundle layout. Linux modules use `${CMAKE_INSTALL_LIBDIR}/obs-plugins` by default, including configured multiarch library directories; override it with `CHURCH_DIRECTOR_LINUX_MODULE_DESTINATION` when packaging requires a different destination. Minimum zoom is fixed at `1.0` by the current motion engine; the other motion controls are editable. Follow [the real-camera smoke test](docs/smoke-tests/obs-real-camera.md) to record detection, visible pan/crop/zoom, repeated cleanup, and logs. The [synthetic-camera smoke test](docs/smoke-tests/obs-synthetic-camera.md) remains useful for deterministic diagnostics.
 
 ## Licensing
 
