@@ -98,16 +98,15 @@ bool TrackingWorker::submit(VideoFrame frame)
 
 void TrackingWorker::invalidate()
 {
+    std::lock_guard lock(snapshot_mutex_);
     invalidation_epoch_.fetch_add(1, std::memory_order_acq_rel);
     snapshots_.publish(CropState{});
 }
 
-std::shared_ptr<const CropState> TrackingWorker::snapshot() const { return snapshots_.read(); }
-
-bool TrackingWorker::snapshot_current() const
+std::shared_ptr<const CropState> TrackingWorker::snapshot() const
 {
-    return processed_epoch_.load(std::memory_order_acquire) ==
-           invalidation_epoch_.load(std::memory_order_acquire);
+    std::lock_guard lock(snapshot_mutex_);
+    return snapshots_.read();
 }
 
 void TrackingWorker::stop()
@@ -130,7 +129,6 @@ void TrackingWorker::run()
         previous = 0;
         processed = 0;
         active_epoch = epoch;
-        processed_epoch_.store(epoch, std::memory_order_release);
     };
     VideoFrame frame;
     while (queue_.wait_take(frame)) {
@@ -181,8 +179,17 @@ void TrackingWorker::run()
             reset_for_epoch(post_motion_epoch);
             continue;
         }
-        snapshots_.publish(crop);
-        processed_epoch_.store(frame_epoch, std::memory_order_release);
+        std::uint64_t publication_epoch = 0;
+        {
+            std::lock_guard lock(snapshot_mutex_);
+            publication_epoch = invalidation_epoch_.load(std::memory_order_acquire);
+            if (frame_epoch == publication_epoch)
+                snapshots_.publish(crop);
+        }
+        if (frame_epoch != publication_epoch) {
+            reset_for_epoch(publication_epoch);
+            continue;
+        }
     }
 }
 

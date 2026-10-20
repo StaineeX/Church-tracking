@@ -1,6 +1,7 @@
 #include "core/tracking_worker.hpp"
 
 #include <atomic>
+#include <barrier>
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
@@ -171,18 +172,52 @@ void worker_resets_state_before_accepting_frame_after_inflight_invalidation()
         check(gate->cv.wait_for(lock, 2s, [&] { return gate->entered; }),
               "detector blocks inside the old epoch");
     }
-    worker.invalidate();
+    std::atomic<bool> invalidated{false};
+    std::atomic<bool> stale_after_invalidation{false};
+    std::atomic<bool> stop_reader{false};
+    std::thread reader([&] {
+        while (!stop_reader.load(std::memory_order_acquire)) {
+            if (!invalidated.load(std::memory_order_acquire))
+                continue;
+            const auto state = worker.snapshot();
+            if (state && state->tracking)
+                stale_after_invalidation.store(true, std::memory_order_release);
+        }
+    });
+    std::barrier start_race(3);
+    std::thread release([&] {
+        start_race.arrive_and_wait();
+        {
+            std::lock_guard lock(gate->mutex);
+            gate->release = true;
+        }
+        gate->cv.notify_all();
+    });
+    std::thread invalidate([&] {
+        start_race.arrive_and_wait();
+        worker.invalidate();
+        invalidated.store(true, std::memory_order_release);
+    });
+    start_race.arrive_and_wait();
+    release.join();
+    invalidate.join();
+
+    const auto invalidated_crop = worker.snapshot();
+    check(invalidated_crop && !invalidated_crop->tracking && invalidated_crop->zoom == 1.0f &&
+              invalidated_crop->visible_region.left == 0.0f &&
+              invalidated_crop->visible_region.top == 0.0f &&
+              invalidated_crop->visible_region.right == 1.0f &&
+              invalidated_crop->visible_region.bottom == 1.0f,
+          "blocking invalidation publishes a neutral snapshot immediately");
     worker.submit(frame(4000000000));
-    {
-        std::lock_guard lock(gate->mutex);
-        gate->release = true;
-    }
-    gate->cv.notify_all();
 
     const auto deadline = std::chrono::steady_clock::now() + 2s;
-    while ((detector_ptr->calls.load() < 3 || !worker.snapshot_current()) &&
-           std::chrono::steady_clock::now() < deadline)
+    while (detector_ptr->calls.load() < 3 && std::chrono::steady_clock::now() < deadline)
         std::this_thread::sleep_for(1ms);
+    stop_reader.store(true, std::memory_order_release);
+    reader.join();
+    check(!stale_after_invalidation.load(std::memory_order_acquire),
+          "stale work cannot be returned after blocking invalidation");
     const auto fresh_crop = worker.snapshot();
     check(detector_ptr->calls.load() == 3, "new epoch starts with a fresh detector cadence");
     check(fresh_crop && !fresh_crop->tracking && fresh_crop->zoom == 1.0f &&

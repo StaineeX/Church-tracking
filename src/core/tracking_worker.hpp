@@ -9,6 +9,7 @@
 
 #include <atomic>
 #include <memory>
+#include <mutex>
 #include <thread>
 
 namespace church {
@@ -26,7 +27,6 @@ public:
     bool submit(VideoFrame frame);
     void invalidate();
     std::shared_ptr<const CropState> snapshot() const;
-    bool snapshot_current() const;
     void stop();
 
 private:
@@ -38,8 +38,8 @@ private:
     std::unique_ptr<Tracker> tracker_;
     MotionEngine motion_;
     std::thread thread_;
+    mutable std::mutex snapshot_mutex_;
     std::atomic<std::uint64_t> invalidation_epoch_{0};
-    std::atomic<std::uint64_t> processed_epoch_{0};
 };
 
 } // namespace church
