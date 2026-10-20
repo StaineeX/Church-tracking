@@ -122,11 +122,27 @@ void TrackingWorker::run()
     std::optional<std::int64_t> origin;
     std::int64_t previous = 0;
     unsigned processed = 0;
+    auto active_epoch = invalidation_epoch_.load(std::memory_order_acquire);
+    const auto reset_for_epoch = [&](std::uint64_t epoch) {
+        tracker_->reset();
+        motion_.reset();
+        origin.reset();
+        previous = 0;
+        processed = 0;
+        active_epoch = epoch;
+        processed_epoch_.store(epoch, std::memory_order_release);
+    };
     VideoFrame frame;
     while (queue_.wait_take(frame)) {
         const auto frame_epoch = frame.processing_epoch;
-        if (frame_epoch != invalidation_epoch_.load(std::memory_order_acquire))
+        const auto current_epoch = invalidation_epoch_.load(std::memory_order_acquire);
+        if (frame_epoch != current_epoch) {
+            if (active_epoch != current_epoch)
+                reset_for_epoch(current_epoch);
             continue;
+        }
+        if (frame_epoch != active_epoch)
+            reset_for_epoch(frame_epoch);
         if (!origin)
             origin = frame.timestamp_ns;
         // A late, out-of-order frame cannot turn the motion clock backward.
@@ -151,12 +167,20 @@ void TrackingWorker::run()
         } else {
             target = tracker_->update(frame);
         }
+        const auto post_tracking_epoch = invalidation_epoch_.load(std::memory_order_acquire);
+        if (frame_epoch != post_tracking_epoch) {
+            reset_for_epoch(post_tracking_epoch);
+            continue;
+        }
         const float motion_delta_seconds = static_cast<float>(std::min(
             static_cast<double>(relative - previous) / 1e9, 1.0));
         previous = relative;
         const auto crop = motion_.update_at(target, motion_delta_seconds, relative);
-        if (frame_epoch != invalidation_epoch_.load(std::memory_order_acquire))
+        const auto post_motion_epoch = invalidation_epoch_.load(std::memory_order_acquire);
+        if (frame_epoch != post_motion_epoch) {
+            reset_for_epoch(post_motion_epoch);
             continue;
+        }
         snapshots_.publish(crop);
         processed_epoch_.store(frame_epoch, std::memory_order_release);
     }

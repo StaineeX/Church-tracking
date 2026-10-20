@@ -48,9 +48,9 @@ bool FilterState::submit_synthetic(std::int64_t timestamp_ns)
 
 CropState FilterState::crop() const
 {
-    if (worker_ && worker_->snapshot_current()) {
+    if (worker_) {
         const auto latest = worker_->snapshot();
-        if (latest)
+        if (latest && worker_->snapshot_current())
             return *latest;
     }
     return {};

@@ -107,6 +107,93 @@ private:
     std::shared_ptr<Gate> gate_;
 };
 
+class InFlightEpochDetector final : public church::Detector {
+public:
+    explicit InFlightEpochDetector(std::shared_ptr<Gate> gate) : gate_(std::move(gate)) {}
+
+    std::vector<church::TargetObservation> detect(const church::VideoFrame &frame) override
+    {
+        const int call = ++calls;
+        if (call == 2) {
+            std::unique_lock lock(gate_->mutex);
+            gate_->entered = true;
+            gate_->cv.notify_all();
+            gate_->cv.wait(lock, [&] { return gate_->release; });
+            return {{{0.80f, 0.40f, 0.90f, 0.60f}, 1.0f, frame.timestamp_ns}};
+        }
+        if (call == 1)
+            return {{{0.80f, 0.40f, 0.90f, 0.60f}, 1.0f, frame.timestamp_ns}};
+        return {};
+    }
+
+    std::atomic<int> calls{0};
+
+private:
+    std::shared_ptr<Gate> gate_;
+};
+
+class CarryingTracker final : public church::Tracker {
+public:
+    void reset() override { target_.reset(); }
+    void set_target(church::TargetObservation target) override { target_ = target; }
+    std::optional<church::TargetObservation> current_target() const override { return target_; }
+    std::optional<church::TargetObservation> update(const church::VideoFrame &frame) override
+    {
+        if (target_)
+            target_->timestamp_ns = frame.timestamp_ns;
+        return target_;
+    }
+
+private:
+    std::optional<church::TargetObservation> target_;
+};
+
+void worker_resets_state_before_accepting_frame_after_inflight_invalidation()
+{
+    auto gate = std::make_shared<Gate>();
+    auto detector = std::make_unique<InFlightEpochDetector>(gate);
+    auto *detector_ptr = detector.get();
+    church::TrackingWorker worker(std::move(detector), std::make_unique<CarryingTracker>());
+    worker.start();
+    worker.submit(frame(0));
+    check(wait_for_tracking(worker), "old epoch starts tracking");
+    worker.submit(frame(1000000000));
+    check(wait_for_timestamp(worker, 1000000000), "old epoch advances the motion clock");
+    worker.submit(frame(2000000000));
+    check(wait_for_timestamp(worker, 2000000000), "old epoch builds a tracking crop");
+    const auto old_crop = worker.snapshot();
+    check(old_crop && old_crop->tracking && old_crop->zoom > 1.0f,
+          "old epoch leaves non-neutral motion state");
+
+    worker.submit(frame(3000000000));
+    {
+        std::unique_lock lock(gate->mutex);
+        check(gate->cv.wait_for(lock, 2s, [&] { return gate->entered; }),
+              "detector blocks inside the old epoch");
+    }
+    worker.invalidate();
+    worker.submit(frame(4000000000));
+    {
+        std::lock_guard lock(gate->mutex);
+        gate->release = true;
+    }
+    gate->cv.notify_all();
+
+    const auto deadline = std::chrono::steady_clock::now() + 2s;
+    while ((detector_ptr->calls.load() < 3 || !worker.snapshot_current()) &&
+           std::chrono::steady_clock::now() < deadline)
+        std::this_thread::sleep_for(1ms);
+    const auto fresh_crop = worker.snapshot();
+    check(detector_ptr->calls.load() == 3, "new epoch starts with a fresh detector cadence");
+    check(fresh_crop && !fresh_crop->tracking && fresh_crop->zoom == 1.0f &&
+              fresh_crop->visible_region.left == 0.0f &&
+              fresh_crop->visible_region.top == 0.0f &&
+              fresh_crop->visible_region.right == 1.0f &&
+              fresh_crop->visible_region.bottom == 1.0f,
+          "frame after invalidation starts from neutral state");
+    worker.stop();
+}
+
 class StaleDetector final : public church::Detector {
 public:
     std::vector<church::TargetObservation> detect(const church::VideoFrame &) override
@@ -358,6 +445,7 @@ void worker_never_calls_graphics_or_requires_obs()
 int main()
 {
     worker_publishes_synthetic_crop_state_from_submitted_frames();
+    worker_resets_state_before_accepting_frame_after_inflight_invalidation();
     worker_tracker_holds_target_between_detections_then_resets_on_loss();
     worker_preserves_exact_ordinary_frame_timestamps();
     worker_does_not_seed_tracker_from_future_detection();
