@@ -9,6 +9,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 find_package(Threads REQUIRED)
+find_package(OpenCV QUIET COMPONENTS core imgproc objdetect)
 
 function(church_director_enable_warnings target)
   if(MSVC)
@@ -18,10 +19,25 @@ function(church_director_enable_warnings target)
   endif()
 endfunction()
 
-add_library(church_director_core STATIC src/core.cpp src/core/geometry.cpp src/core/motion_engine.cpp src/core/tracking_worker.cpp)
+set(CHURCH_DIRECTOR_CORE_SOURCES
+  src/core.cpp
+  src/core/geometry.cpp
+  src/core/motion_engine.cpp
+  src/core/person_tracker.cpp
+  src/core/tracking_worker.cpp
+)
+if(OpenCV_FOUND)
+  list(APPEND CHURCH_DIRECTOR_CORE_SOURCES src/core/opencv_person_detector.cpp)
+endif()
+
+add_library(church_director_core STATIC ${CHURCH_DIRECTOR_CORE_SOURCES})
 set_target_properties(church_director_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_include_directories(church_director_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
 target_link_libraries(church_director_core PUBLIC Threads::Threads)
+if(OpenCV_FOUND)
+  target_include_directories(church_director_core PRIVATE ${OpenCV_INCLUDE_DIRS})
+  target_link_libraries(church_director_core PRIVATE ${OpenCV_LIBS})
+endif()
 church_director_enable_warnings(church_director_core)
 
 if(BUILD_OBS_PLUGIN)
