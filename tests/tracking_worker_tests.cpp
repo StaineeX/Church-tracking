@@ -170,6 +170,61 @@ public:
     std::atomic<int> calls{0};
 };
 
+class AssociationDetector final : public church::Detector {
+public:
+    std::vector<church::TargetObservation> detect(const church::VideoFrame &frame) override
+    {
+        if (calls_++ == 0)
+            return {{{0.20f, 0.20f, 0.40f, 0.40f}, 0.80f, frame.timestamp_ns},
+                    {{0.70f, 0.20f, 0.90f, 0.40f}, 0.60f, frame.timestamp_ns}};
+        return {{{0.22f, 0.20f, 0.42f, 0.40f}, 0.70f, frame.timestamp_ns},
+                {{0.70f, 0.20f, 0.90f, 0.40f}, 0.99f, frame.timestamp_ns}};
+    }
+
+private:
+    int calls_ = 0;
+};
+
+class RecordingTracker final : public church::Tracker {
+public:
+    void reset() override { target_.reset(); }
+    void set_target(church::TargetObservation target) override
+    {
+        target_ = target;
+        selected.push_back(target);
+    }
+    std::optional<church::TargetObservation> current_target() const override { return target_; }
+    std::optional<church::TargetObservation> update(const church::VideoFrame &frame) override
+    {
+        if (target_)
+            target_->timestamp_ns = frame.timestamp_ns;
+        return target_;
+    }
+
+    std::vector<church::TargetObservation> selected;
+
+private:
+    std::optional<church::TargetObservation> target_;
+};
+
+void worker_associates_detection_with_existing_target()
+{
+    auto tracker = std::make_unique<RecordingTracker>();
+    auto *tracker_ptr = tracker.get();
+    church::TrackingWorker worker(std::make_unique<AssociationDetector>(), std::move(tracker));
+    worker.start();
+    worker.submit(frame(0));
+    check(wait_for_tracking(worker), "initial association target published");
+    for (int frame_number = 1; frame_number <= 3; ++frame_number) {
+        worker.submit(frame(frame_number));
+        check(wait_for_timestamp(worker, frame_number), "association cadence frame processed");
+    }
+    check(tracker_ptr->selected.size() == 2, "both detection results reached the tracker");
+    check(tracker_ptr->selected.size() == 2 && tracker_ptr->selected[1].bounds.left < 0.3f,
+          "existing target remains selected when a distractor becomes higher confidence");
+    worker.stop();
+}
+
 void worker_does_not_seed_tracker_from_future_detection()
 {
     auto detector = std::make_unique<FutureDetector>();
@@ -306,6 +361,7 @@ int main()
     worker_tracker_holds_target_between_detections_then_resets_on_loss();
     worker_preserves_exact_ordinary_frame_timestamps();
     worker_does_not_seed_tracker_from_future_detection();
+    worker_associates_detection_with_existing_target();
     worker_uses_full_elapsed_time_for_stale_observations();
     worker_saturates_extreme_relative_timestamps();
     worker_drops_old_frames_when_processing_is_delayed();

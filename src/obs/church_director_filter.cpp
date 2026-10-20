@@ -3,6 +3,7 @@
 #include "obs/church_director_filter.hpp"
 
 #include "core/geometry.hpp"
+#include "core/frame_conversion.hpp"
 #include "core/opencv_person_detector.hpp"
 #include "core/person_tracker.hpp"
 #include "obs/filter_state.hpp"
@@ -13,7 +14,6 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
-#include <exception>
 #include <fstream>
 #include <iterator>
 #include <limits>
@@ -50,186 +50,28 @@ struct FilterContext {
     bool crop_error_logged = false;
 };
 
-struct YuvMatrix {
-    float values[12];
-};
-
-std::optional<std::size_t> output_size(std::uint32_t width, std::uint32_t height)
-{
-    const auto row_bytes = static_cast<std::uint64_t>(width) * 4u;
-    if (row_bytes > std::numeric_limits<std::uint32_t>::max() ||
-        row_bytes > std::numeric_limits<std::size_t>::max() ||
-        (height != 0 && row_bytes > std::numeric_limits<std::uint64_t>::max() / height))
-        return std::nullopt;
-    const auto total_bytes = row_bytes * static_cast<std::uint64_t>(height);
-    if (total_bytes > std::numeric_limits<std::size_t>::max())
-        return std::nullopt;
-    return static_cast<std::size_t>(total_bytes);
-}
-
-bool valid_plane(const std::uint8_t *data, std::uint32_t stride, std::uint32_t rows,
-                 std::uint64_t minimum_row_bytes)
-{
-    return data && static_cast<std::uint64_t>(stride) >= minimum_row_bytes && rows != 0 &&
-           static_cast<std::uint64_t>(stride) <=
-               std::numeric_limits<std::size_t>::max() / rows;
-}
-
-std::optional<church::VideoFrame> make_output(const obs_source_frame &source)
-{
-    if (source.width == 0 || source.height == 0 ||
-        source.timestamp > static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max()))
-        return std::nullopt;
-    const auto bytes = output_size(source.width, source.height);
-    if (!bytes)
-        return std::nullopt;
-
-    church::VideoFrame result;
-    result.width = source.width;
-    result.height = source.height;
-    result.stride = source.width * 4u;
-    result.format = church::PixelFormat::rgba8;
-    result.timestamp_ns = static_cast<std::int64_t>(source.timestamp);
-    result.pixels.resize(*bytes);
-    return result;
-}
-
-std::uint8_t clamp_byte(float value)
-{
-    return static_cast<std::uint8_t>(std::lround(std::clamp(value, 0.0f, 255.0f)));
-}
-
-YuvMatrix yuv_matrix(const obs_source_frame &source)
-{
-    bool valid = true;
-    for (std::size_t i = 0; i < 12; ++i)
-        valid = valid && std::isfinite(source.color_matrix[i]);
-    if (valid) {
-        YuvMatrix matrix{};
-        std::copy_n(source.color_matrix, 12, matrix.values);
-        return matrix;
-    }
-    if (source.full_range)
-        return {{{1.0f, 0.0f, 1.4020f, -0.7010f,
-                  1.0f, -0.3441f, -0.7141f, 0.5291f,
-                  1.0f, 1.7720f, 0.0f, -0.8860f}}};
-    return {{{1.1644f, 0.0f, 1.7927f, -0.9729f,
-              1.1644f, -0.2132f, -0.5329f, 0.3015f,
-              1.1644f, 2.1124f, 0.0f, -1.1334f}}};
-}
-
-void write_yuv_pixel(church::VideoFrame &result, std::uint32_t x, std::uint32_t y,
-                     std::uint8_t y_sample, std::uint8_t u_sample, std::uint8_t v_sample,
-                     const YuvMatrix &matrix)
-{
-    const float y_value = static_cast<float>(y_sample) / 255.0f;
-    const float u_value = static_cast<float>(u_sample) / 255.0f;
-    const float v_value = static_cast<float>(v_sample) / 255.0f;
-    auto *pixel = result.pixels.data() + static_cast<std::size_t>(y) * result.stride + x * 4u;
-    pixel[0] = clamp_byte((matrix.values[0] * y_value + matrix.values[1] * u_value +
-                           matrix.values[2] * v_value + matrix.values[3]) * 255.0f);
-    pixel[1] = clamp_byte((matrix.values[4] * y_value + matrix.values[5] * u_value +
-                           matrix.values[6] * v_value + matrix.values[7]) * 255.0f);
-    pixel[2] = clamp_byte((matrix.values[8] * y_value + matrix.values[9] * u_value +
-                           matrix.values[10] * v_value + matrix.values[11]) * 255.0f);
-    pixel[3] = 255;
-}
-
 std::optional<church::VideoFrame> copy_obs_frame(const obs_source_frame &source)
 {
-    try {
-        switch (source.format) {
-        case VIDEO_FORMAT_RGBA:
-        case VIDEO_FORMAT_BGRA:
-        case VIDEO_FORMAT_BGRX:
-        case VIDEO_FORMAT_BGR3:
-        case VIDEO_FORMAT_NV12:
-        case VIDEO_FORMAT_I420:
-            break;
-        default:
-            return std::nullopt;
-        }
-        auto result = make_output(source);
-        if (!result)
-            return std::nullopt;
+    church::SourceFrameView view;
+    view.width = source.width;
+    view.height = source.height;
+    view.timestamp_ns = source.timestamp;
+    view.full_range = source.full_range;
+    view.flip = source.flip;
+    std::copy_n(source.color_matrix, view.color_matrix.size(), view.color_matrix.begin());
+    for (std::size_t i = 0; i < view.planes.size(); ++i)
+        view.planes[i] = {source.data[i], source.linesize[i]};
 
-        const auto width = source.width;
-        const auto height = source.height;
-        switch (source.format) {
-        case VIDEO_FORMAT_RGBA:
-        case VIDEO_FORMAT_BGRA:
-        case VIDEO_FORMAT_BGRX:
-        case VIDEO_FORMAT_BGR3: {
-            const std::uint32_t bytes_per_pixel = source.format == VIDEO_FORMAT_BGR3 ? 3u : 4u;
-            if (!valid_plane(source.data[0], source.linesize[0], height,
-                             static_cast<std::uint64_t>(width) * bytes_per_pixel))
-                return std::nullopt;
-            for (std::uint32_t y = 0; y < height; ++y) {
-                const auto *input = source.data[0] + static_cast<std::size_t>(y) * source.linesize[0];
-                auto *output = result->pixels.data() + static_cast<std::size_t>(y) * result->stride;
-                for (std::uint32_t x = 0; x < width; ++x) {
-                    if (source.format == VIDEO_FORMAT_RGBA) {
-                        output[x * 4u + 0] = input[x * 4u + 0];
-                        output[x * 4u + 1] = input[x * 4u + 1];
-                        output[x * 4u + 2] = input[x * 4u + 2];
-                        output[x * 4u + 3] = input[x * 4u + 3];
-                    } else {
-                        const auto input_stride = static_cast<std::uint32_t>(x * bytes_per_pixel);
-                        output[x * 4u + 0] = input[input_stride + 2];
-                        output[x * 4u + 1] = input[input_stride + 1];
-                        output[x * 4u + 2] = input[input_stride + 0];
-                        output[x * 4u + 3] = source.format == VIDEO_FORMAT_BGRA
-                                                 ? input[input_stride + 3] : 255;
-                    }
-                }
-            }
-            return result;
-        }
-        case VIDEO_FORMAT_NV12: {
-            const auto chroma_width = width / 2u + width % 2u;
-            const auto chroma_height = height / 2u + height % 2u;
-            const auto chroma_row_bytes = static_cast<std::uint64_t>(chroma_width) * 2u;
-            if (!valid_plane(source.data[0], source.linesize[0], height, width) ||
-                !valid_plane(source.data[1], source.linesize[1], chroma_height, chroma_row_bytes))
-                return std::nullopt;
-            const auto matrix = yuv_matrix(source);
-            for (std::uint32_t y = 0; y < height; ++y) {
-                const auto *y_row = source.data[0] + static_cast<std::size_t>(y) * source.linesize[0];
-                const auto *uv_row = source.data[1] +
-                                     static_cast<std::size_t>(y / 2u) * source.linesize[1];
-                for (std::uint32_t x = 0; x < width; ++x) {
-                    const auto uv_index = (x / 2u) * 2u;
-                    write_yuv_pixel(*result, x, y, y_row[x], uv_row[uv_index], uv_row[uv_index + 1],
-                                    matrix);
-                }
-            }
-            return result;
-        }
-        case VIDEO_FORMAT_I420: {
-            const auto chroma_width = width / 2u + width % 2u;
-            const auto chroma_height = height / 2u + height % 2u;
-            if (!valid_plane(source.data[0], source.linesize[0], height, width) ||
-                !valid_plane(source.data[1], source.linesize[1], chroma_height, chroma_width) ||
-                !valid_plane(source.data[2], source.linesize[2], chroma_height, chroma_width))
-                return std::nullopt;
-            const auto matrix = yuv_matrix(source);
-            for (std::uint32_t y = 0; y < height; ++y) {
-                const auto *y_row = source.data[0] + static_cast<std::size_t>(y) * source.linesize[0];
-                const auto *u_row = source.data[1] +
-                                    static_cast<std::size_t>(y / 2u) * source.linesize[1];
-                const auto *v_row = source.data[2] +
-                                    static_cast<std::size_t>(y / 2u) * source.linesize[2];
-                for (std::uint32_t x = 0; x < width; ++x)
-                    write_yuv_pixel(*result, x, y, y_row[x], u_row[x / 2u], v_row[x / 2u], matrix);
-            }
-            return result;
-        }
-        default:
-            return std::nullopt;
-        }
-    } catch (const std::exception &) {
-        return std::nullopt;
+    switch (source.format) {
+    case VIDEO_FORMAT_RGBA: view.format = church::SourcePixelFormat::rgba; break;
+    case VIDEO_FORMAT_BGRA: view.format = church::SourcePixelFormat::bgra; break;
+    case VIDEO_FORMAT_BGRX: view.format = church::SourcePixelFormat::bgrx; break;
+    case VIDEO_FORMAT_BGR3: view.format = church::SourcePixelFormat::bgr3; break;
+    case VIDEO_FORMAT_NV12: view.format = church::SourcePixelFormat::nv12; break;
+    case VIDEO_FORMAT_I420: view.format = church::SourcePixelFormat::i420; break;
+    default: return std::nullopt;
     }
+    return church::convert_source_frame(view);
 }
 
 double finite_or_default(double value, double fallback)

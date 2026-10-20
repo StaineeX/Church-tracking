@@ -12,6 +12,66 @@
 #include <utility>
 
 namespace church {
+namespace {
+
+float intersection_over_union(const NormalizedRect &left, const NormalizedRect &right)
+{
+    const float overlap_left = std::max(left.left, right.left);
+    const float overlap_top = std::max(left.top, right.top);
+    const float overlap_right = std::min(left.right, right.right);
+    const float overlap_bottom = std::min(left.bottom, right.bottom);
+    const float overlap_width = std::max(0.0f, overlap_right - overlap_left);
+    const float overlap_height = std::max(0.0f, overlap_bottom - overlap_top);
+    const float overlap = overlap_width * overlap_height;
+    const float left_area = std::max(0.0f, left.right - left.left) *
+                            std::max(0.0f, left.bottom - left.top);
+    const float right_area = std::max(0.0f, right.right - right.left) *
+                             std::max(0.0f, right.bottom - right.top);
+    const float union_area = left_area + right_area - overlap;
+    return union_area > 0.0f ? overlap / union_area : 0.0f;
+}
+
+float center_distance_squared(const NormalizedRect &left, const NormalizedRect &right)
+{
+    const float dx = (left.left + left.right) - (right.left + right.right);
+    const float dy = (left.top + left.bottom) - (right.top + right.bottom);
+    return dx * dx + dy * dy;
+}
+
+std::optional<TargetObservation> select_detection(
+    const std::vector<TargetObservation> &detections,
+    const std::optional<TargetObservation> &current_target, const MotionEngine &motion,
+    std::int64_t timestamp_ns)
+{
+    std::optional<TargetObservation> selected;
+    if (!current_target) {
+        for (const auto &detection : detections) {
+            if (!motion.accepts_observation(detection, timestamp_ns))
+                continue;
+            if (!selected || detection.confidence > selected->confidence)
+                selected = detection;
+        }
+        return selected;
+    }
+
+    float selected_iou = -1.0f;
+    float selected_distance = std::numeric_limits<float>::max();
+    for (const auto &detection : detections) {
+        if (!motion.accepts_observation(detection, timestamp_ns))
+            continue;
+        const float iou = intersection_over_union(current_target->bounds, detection.bounds);
+        const float distance = center_distance_squared(current_target->bounds, detection.bounds);
+        if (iou > selected_iou + 1e-6f ||
+            (std::fabs(iou - selected_iou) <= 1e-6f && distance < selected_distance)) {
+            selected = detection;
+            selected_iou = iou;
+            selected_distance = distance;
+        }
+    }
+    return selected;
+}
+
+} // namespace
 
 TrackingWorker::TrackingWorker(std::unique_ptr<Detector> detector,
                                std::unique_ptr<Tracker> tracker, MotionSettings settings)
@@ -63,10 +123,8 @@ void TrackingWorker::run()
         std::optional<TargetObservation> target;
         if (processed++ % 3 == 0) {
             auto detections = detector_->detect(frame);
-            if (detections.empty()) {
-                tracker_->reset();
-            } else if (motion_.accepts_observation(detections.front(), relative)) {
-                target = detections.front();
+            target = select_detection(detections, tracker_->current_target(), motion_, relative);
+            if (target) {
                 tracker_->set_target(*target);
             } else {
                 tracker_->reset();

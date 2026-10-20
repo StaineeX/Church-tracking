@@ -18,6 +18,11 @@ target_link_libraries(tracking_worker_tests PRIVATE church_director_core)
 church_director_enable_warnings(tracking_worker_tests)
 add_test(NAME tracking_worker COMMAND tracking_worker_tests)
 
+add_executable(frame_conversion_tests frame_conversion_tests.cpp)
+target_link_libraries(frame_conversion_tests PRIVATE church_director_core)
+church_director_enable_warnings(frame_conversion_tests)
+add_test(NAME frame_conversion COMMAND frame_conversion_tests)
+
 add_executable(person_tracker_tests person_tracker_tests.cpp)
 target_link_libraries(person_tracker_tests PRIVATE church_director_core)
 church_director_enable_warnings(person_tracker_tests)

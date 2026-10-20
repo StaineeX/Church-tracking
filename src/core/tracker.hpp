@@ -14,6 +14,7 @@ public:
     virtual ~Tracker() = default;
     virtual void reset() = 0;
     virtual void set_target(TargetObservation target) = 0;
+    virtual std::optional<TargetObservation> current_target() const { return std::nullopt; }
     virtual std::optional<TargetObservation> update(const VideoFrame &frame) = 0;
 };
 

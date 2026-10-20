@@ -9,7 +9,11 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 find_package(Threads REQUIRED)
-find_package(OpenCV QUIET COMPONENTS core imgproc objdetect)
+if(BUILD_OBS_PLUGIN)
+  find_package(OpenCV REQUIRED COMPONENTS core imgproc objdetect)
+else()
+  find_package(OpenCV QUIET COMPONENTS core imgproc objdetect)
+endif()
 
 function(church_director_enable_warnings target)
   if(MSVC)
@@ -21,6 +25,7 @@ endfunction()
 
 set(CHURCH_DIRECTOR_CORE_SOURCES
   src/core.cpp
+  src/core/frame_conversion.cpp
   src/core/geometry.cpp
   src/core/motion_engine.cpp
   src/core/person_tracker.cpp
