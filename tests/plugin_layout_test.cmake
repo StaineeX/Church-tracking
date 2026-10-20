@@ -9,6 +9,17 @@ endif()
 
 file(READ "${SOURCE_ROOT}/src/obs/church_director_filter.cpp" filter_source)
 string(REPLACE "\n" " " filter_source_one_line "${filter_source}")
+foreach(contract IN ITEMS "filter_video(void *data, obs_source_frame *frame)"
+                          "value.filter_video = filter_video;"
+                          "obs_data_set_default_bool(settings, synthetic_key, false);"
+                          "VIDEO_FORMAT_RGBA" "VIDEO_FORMAT_BGRA"
+                          "VIDEO_FORMAT_BGRX" "VIDEO_FORMAT_BGR3"
+                          "VIDEO_FORMAT_NV12" "VIDEO_FORMAT_I420")
+  string(FIND "${filter_source}" "${contract}" contract_offset)
+  if(contract_offset LESS 0)
+    message(FATAL_ERROR "OBS filter layout is missing required contract: ${contract}")
+  endif()
+endforeach()
 string(FIND "${filter_source_one_line}"
   "obs_source_t *parent = obs_filter_get_target(filter->source);" parent_offset)
 if(parent_offset LESS 0)
