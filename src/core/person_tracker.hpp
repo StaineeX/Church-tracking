@@ -18,7 +18,7 @@ public:
     std::optional<TargetObservation> update(const VideoFrame &frame) override;
 
 private:
-    std::optional<TargetObservation> target_;
+    std::optional<TargetObservation> last_observation_;
     float velocity_x_ = 0.0f;
     float velocity_y_ = 0.0f;
     std::int64_t max_prediction_ns_;

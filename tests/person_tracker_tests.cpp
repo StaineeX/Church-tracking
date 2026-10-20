@@ -55,14 +55,18 @@ void tracker_clamps_predicted_bounds_to_normalized_source()
           "vertical prediction remains inside the source");
 }
 
-void tracker_stops_prediction_after_a_short_gap()
+void tracker_stops_prediction_after_a_cumulative_gap()
 {
     church::PersonTracker tracker;
     tracker.set_target({{0.2f, 0.2f, 0.4f, 0.4f}, 1.0f, 1'000'000'000});
     tracker.set_target({{0.3f, 0.2f, 0.5f, 0.4f}, 1.0f, 1'100'000'000});
 
+    for (int step = 1; step <= 5; ++step) {
+        const auto predicted = tracker.update(frame(1'100'000'000 + step * 100'000'000));
+        check(predicted.has_value(), "tracker predicts each frame within the horizon");
+    }
     check(!tracker.update(frame(1'700'000'000)),
-          "tracker returns no target after the prediction horizon expires");
+          "tracker returns no target after cumulative predictions exceed the horizon");
 }
 
 void tracker_reset_clears_target_and_velocity()
@@ -84,7 +88,7 @@ int main()
 {
     tracker_predicts_constant_velocity_from_timestamps();
     tracker_clamps_predicted_bounds_to_normalized_source();
-    tracker_stops_prediction_after_a_short_gap();
+    tracker_stops_prediction_after_a_cumulative_gap();
     tracker_reset_clears_target_and_velocity();
     return failures ? EXIT_FAILURE : EXIT_SUCCESS;
 }

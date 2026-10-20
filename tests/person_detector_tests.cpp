@@ -6,6 +6,7 @@
 #include <opencv2/imgproc.hpp>
 
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
@@ -69,10 +70,11 @@ void malformed_frames_are_rejected_without_detections()
 
 void person_fixture_produces_normalized_confident_bounds()
 {
-    church::OpenCvPersonDetector detector(0.0f, 640);
+    church::OpenCvPersonDetector detector(0.0f, 240);
     const auto detections = detector.detect(person_fixture());
     check(!detections.empty(), "person-shaped fixture is accepted by the HOG detector");
-    for (const auto &detection : detections) {
+    for (std::size_t i = 0; i < detections.size(); ++i) {
+        const auto &detection = detections[i];
         const auto &bounds = detection.bounds;
         check(std::isfinite(bounds.left) && std::isfinite(bounds.top) &&
                   std::isfinite(bounds.right) && std::isfinite(bounds.bottom),
@@ -83,6 +85,21 @@ void person_fixture_produces_normalized_confident_bounds()
               "detection bounds are normalized and non-empty");
         check(std::isfinite(detection.confidence), "detection confidence is finite");
         check(detection.timestamp_ns == 123456789, "detection preserves frame timestamp");
+        if (i > 0)
+            check(detections[i - 1].confidence >= detection.confidence,
+                  "detections are ordered by descending confidence");
+    }
+    if (!detections.empty()) {
+        const auto &bounds = detections.front().bounds;
+        const float center_x = (bounds.left + bounds.right) * 0.5f;
+        const float center_y = (bounds.top + bounds.bottom) * 0.5f;
+        check(center_x > 0.35f && center_x < 0.65f,
+              "resized detection maps back near the fixture center horizontally");
+        check(center_y > 0.25f && center_y < 0.75f,
+              "resized detection maps back near the fixture center vertically");
+        check(bounds.left < 0.5f && bounds.right > 0.5f && bounds.top < 0.5f &&
+                  bounds.bottom > 0.5f,
+              "normalized detection surrounds the fixture center");
     }
 }
 } // namespace
