@@ -6,6 +6,7 @@
 #include "core/synthetic_tracker.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <exception>
 #include <limits>
@@ -62,6 +63,15 @@ std::optional<TargetObservation> select_detection(
             continue;
         const float iou = intersection_over_union(current_target->bounds, detection.bounds);
         const float distance = center_distance_squared(current_target->bounds, detection.bounds);
+        const float width = current_target->bounds.right - current_target->bounds.left;
+        const float height = current_target->bounds.bottom - current_target->bounds.top;
+        // center_distance_squared uses doubled center coordinates. The half
+        // diagonal of the predicted target is therefore width^2 + height^2
+        // in that coordinate system. A person outside this gate is a
+        // different subject, even when its confidence is higher.
+        const float max_distance = std::max(0.04f, width * width + height * height);
+        if (iou <= 0.0f && distance > max_distance)
+            continue;
         if (iou > selected_iou + 1e-6f ||
             (std::fabs(iou - selected_iou) <= 1e-6f && distance < selected_distance)) {
             selected = detection;
@@ -128,6 +138,7 @@ void TrackingWorker::run()
     std::int64_t previous = 0;
     unsigned processed = 0;
     auto active_epoch = invalidation_epoch_.load(std::memory_order_acquire);
+    bool target_locked = false;
     const auto reset_tracker = [&] {
         try {
             tracker_->reset();
@@ -141,6 +152,7 @@ void TrackingWorker::run()
         previous = 0;
         processed = 0;
         active_epoch = epoch;
+        target_locked = false;
     };
     VideoFrame frame;
     while (queue_.wait_take(frame)) {
@@ -170,8 +182,14 @@ void TrackingWorker::run()
             if (processed++ % 3 == 0) {
                 auto detections = detector_->detect(frame);
                 const auto predicted_target = tracker_->predict(relative);
-                target = select_detection(detections, predicted_target, motion_, relative);
+                // A new target is acquired only once per arm/invalidation
+                // epoch. After the prediction horizon expires, stay neutral
+                // until the operator explicitly disarms/re-arms the filter;
+                // this prevents a bystander from silently taking over.
+                if (!target_locked || predicted_target)
+                    target = select_detection(detections, predicted_target, motion_, relative);
                 if (target) {
+                    target_locked = true;
                     tracker_->set_target(*target);
                 } else {
                     target = predicted_target;
@@ -185,10 +203,12 @@ void TrackingWorker::run()
             reset_tracker();
             motion_.reset();
             target.reset();
+            target_locked = false;
         } catch (...) {
             reset_tracker();
             motion_.reset();
             target.reset();
+            target_locked = false;
         }
         const auto post_tracking_epoch = invalidation_epoch_.load(std::memory_order_acquire);
         if (frame_epoch != post_tracking_epoch) {

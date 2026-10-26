@@ -11,11 +11,27 @@ if(NOT locale_text MATCHES "ChurchDirector.Filter=Church Director Smart Camera")
   message(FATAL_ERROR "OBS filter locale label must identify the Church Director Smart Camera")
 endif()
 
+file(READ "${SOURCE_ROOT}/data/effects/church-director.effect" effect_text)
+foreach(contract IN ITEMS "VertData VSDefault(VertData v_in)"
+                          "float4 PSCrop(VertData v_in)"
+                          "vertex_shader = VSDefault(v_in);"
+                          "pixel_shader = PSCrop(v_in);")
+  string(FIND "${effect_text}" "${contract}" contract_offset)
+  if(contract_offset LESS 0)
+    message(FATAL_ERROR "OBS effect shader contract is missing: ${contract}")
+  endif()
+endforeach()
+
 file(READ "${SOURCE_ROOT}/src/obs/church_director_filter.cpp" filter_source)
 string(REPLACE "\n" " " filter_source_one_line "${filter_source}")
 foreach(contract IN ITEMS "filter_video(void *data, obs_source_frame *frame)"
                           "value.filter_video = filter_video;"
                           "obs_data_set_default_bool(settings, synthetic_key, false);"
+                          "tracking_armed_key"
+                          "obs_hotkey_register_source"
+                          "filter_add"
+                          "ChurchDirector.ToggleTracking"
+                          "obs_source_skip_video_filter"
                           "VIDEO_FORMAT_RGBA" "VIDEO_FORMAT_BGRA"
                           "VIDEO_FORMAT_BGRX" "VIDEO_FORMAT_BGR3"
                           "VIDEO_FORMAT_NV12" "VIDEO_FORMAT_I420"

@@ -542,6 +542,39 @@ private:
     std::optional<church::TargetObservation> target_;
 };
 
+class DistantDistractorDetector final : public church::Detector {
+public:
+    std::vector<church::TargetObservation> detect(const church::VideoFrame &frame) override
+    {
+        if (calls_++ == 0)
+            return {{{0.20f, 0.20f, 0.40f, 0.40f}, 0.70f, frame.timestamp_ns}};
+        return {{{0.75f, 0.20f, 0.95f, 0.40f}, 0.99f, frame.timestamp_ns}};
+    }
+
+private:
+    int calls_ = 0;
+};
+
+void worker_rejects_a_distant_higher_confidence_distractor()
+{
+    auto tracker = std::make_unique<RecordingTracker>();
+    auto *tracker_ptr = tracker.get();
+    church::TrackingWorker worker(std::make_unique<DistantDistractorDetector>(),
+                                  std::move(tracker));
+    worker.start();
+    check(submit_until_accepted(worker, frame(0)), "target lock origin frame submitted");
+    check(wait_for_tracking(worker), "target lock acquires the first person");
+    for (int frame_number = 1; frame_number <= 3; ++frame_number) {
+        check(submit_until_accepted(worker, frame(frame_number)),
+              "target lock follow-up frame submitted");
+        check(wait_for_timestamp(worker, frame_number),
+              "target lock sequence advances to the next frame");
+    }
+    check(tracker_ptr->selected.size() == 1,
+          "distant higher-confidence person cannot replace the locked target");
+    worker.stop();
+}
+
 void worker_associates_detection_with_existing_target()
 {
     auto tracker = std::make_unique<RecordingTracker>();
@@ -702,6 +735,7 @@ int main()
     worker_does_not_seed_tracker_from_future_detection();
     worker_associates_detection_with_existing_target();
     worker_uses_predicted_target_when_people_cross();
+    worker_rejects_a_distant_higher_confidence_distractor();
     worker_recovers_from_detector_exceptions();
     worker_recovers_from_tracker_exception(false);
     worker_recovers_from_tracker_exception(true);

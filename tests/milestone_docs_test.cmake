@@ -10,10 +10,13 @@ set(building "${SOURCE_ROOT}/docs/development/building.md")
 set(notices "${SOURCE_ROOT}/THIRD_PARTY_NOTICES.md")
 set(spec "${SOURCE_ROOT}/docs/superpowers/specs/2026-10-04-church-director-obs-design.md")
 set(plan "${SOURCE_ROOT}/docs/superpowers/plans/2026-10-19-real-person-tracking.md")
+set(safety_spec "${SOURCE_ROOT}/docs/superpowers/specs/2026-10-26-ptz-tracking-safety-design.md")
+set(safety_plan "${SOURCE_ROOT}/docs/superpowers/plans/2026-10-26-ptz-tracking-safety.md")
 set(obs_plugin_cmake "${SOURCE_ROOT}/cmake/obs-plugin.cmake")
 set(presets "${SOURCE_ROOT}/CMakePresets.json")
 foreach(path IN ITEMS "${workflow}" "${smoke}" "${real_smoke}" "${readme}"
                       "${building}" "${notices}" "${spec}" "${plan}"
+                      "${safety_spec}" "${safety_plan}"
                       "${obs_plugin_cmake}" "${presets}")
   if(NOT EXISTS "${path}")
     message(FATAL_ERROR "Missing milestone evidence: ${path}")
@@ -97,14 +100,16 @@ endforeach()
 
 file(READ "${readme}" readme_text)
 foreach(required IN ITEMS "Real person tracking" "OpenCV" "No model download"
-                          "camera source" "obs-real-camera.md")
+                          "camera source" "obs-real-camera.md" "disarmed by default"
+                          "Toggle Church Director tracking" "physical PTZ controller")
   require_text("${readme_text}" "${required}" "README real-mode documentation")
 endforeach()
 
 file(READ "${building}" building_text)
 foreach(required IN ITEMS "OpenCV" "libobs" "no model download" "Windows"
                           "macOS" "OpenCV >= 4.5" "camera privacy"
-                          "Linux device/portal permissions" "unavailable" "obs-real-camera.md")
+                          "Linux device/portal permissions" "unavailable" "obs-real-camera.md"
+                          "Toggle Church Director tracking" "physical PTZ controller")
   require_text("${building_text}" "${required}" "Build guide real-mode documentation")
 endforeach()
 
@@ -119,6 +124,18 @@ foreach(required IN ITEMS "real OpenCV HOG person tracking" "default vertical sl
                           "Synthetic mode remains available for deterministic tests"
                           "real camera smoke test")
   require_text("${spec_text}" "${required}" "Approved real-mode design ruling")
+endforeach()
+
+file(READ "${safety_spec}" safety_spec_text)
+foreach(required IN ITEMS "OBS source hotkey" "disarmed by default" "sticky spatial"
+                          "not face recognition" "physical PTZ controller")
+  require_text("${safety_spec_text}" "${required}" "PTZ safety design")
+endforeach()
+
+file(READ "${safety_plan}" safety_plan_text)
+foreach(required IN ITEMS "armed" "distant higher-confidence distractor" "OBS hotkey"
+                          "full CTest" "push the")
+  require_text("${safety_plan_text}" "${required}" "PTZ safety implementation plan")
 endforeach()
 
 file(READ "${plan}" plan_text)
