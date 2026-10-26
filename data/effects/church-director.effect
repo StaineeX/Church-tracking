@@ -16,20 +16,20 @@ struct VertData {
     float2 uv : TEXCOORD0;
 };
 
-VertData VSDefault(VertData input)
+VertData VSDefault(VertData v_in)
 {
     VertData output;
-    output.pos = mul(float4(input.pos.xyz, 1.0), ViewProj);
-    output.uv = input.uv;
+    output.pos = mul(float4(v_in.pos.xyz, 1.0), ViewProj);
+    output.uv = v_in.uv;
     return output;
 }
 
-float4 PSCrop(VertData input) : TARGET
+float4 PSCrop(VertData v_in) : TARGET
 {
     float2 region_size = max(visible_region.zw - visible_region.xy, float2(0.0, 0.0));
     float2 size = min(region_size, float2(1.0 / max(zoom, 1.0), 1.0 / max(zoom, 1.0)));
     float2 origin = visible_region.xy + (region_size - size) * 0.5;
-    float2 uv = saturate(origin + input.uv * size);
+    float2 uv = saturate(origin + v_in.uv * size);
     return image.Sample(textureSampler, uv);
 }
 
