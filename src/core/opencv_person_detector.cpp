@@ -48,69 +48,65 @@ std::vector<TargetObservation> OpenCvPersonDetector::detect(const VideoFrame &fr
     if (!valid_frame(frame) || max_dimension_ == 0)
         return {};
 
-    try {
-        const cv::Mat rgba(static_cast<int>(frame.height), static_cast<int>(frame.width),
-                           CV_8UC4, const_cast<std::uint8_t *>(frame.pixels.data()),
-                           frame.stride);
-        cv::Mat bgr;
-        cv::cvtColor(rgba, bgr, cv::COLOR_RGBA2BGR);
+    const cv::Mat rgba(static_cast<int>(frame.height), static_cast<int>(frame.width),
+                       CV_8UC4, const_cast<std::uint8_t *>(frame.pixels.data()),
+                       frame.stride);
+    cv::Mat bgr;
+    cv::cvtColor(rgba, bgr, cv::COLOR_RGBA2BGR);
 
-        if (bgr.cols < hog_.winSize.width || bgr.rows < hog_.winSize.height)
-            return {};
-
-        const auto largest_dimension = std::max(frame.width, frame.height);
-        const double scale = largest_dimension > max_dimension_
-                                 ? static_cast<double>(max_dimension_) / largest_dimension
-                                 : 1.0;
-        cv::Mat search_image;
-        if (scale < 1.0) {
-            cv::resize(bgr, search_image, {}, scale, scale, cv::INTER_AREA);
-        } else {
-            search_image = bgr;
-        }
-
-        if (search_image.cols < hog_.winSize.width || search_image.rows < hog_.winSize.height)
-            return {};
-
-        std::vector<cv::Rect> found;
-        std::vector<double> weights;
-        hog_.detectMultiScale(search_image, found, weights, hit_threshold_, cv::Size(8, 8),
-                              cv::Size(32, 32), 1.05, 2.0, false);
-
-        std::vector<TargetObservation> observations;
-        observations.reserve(found.size());
-        for (std::size_t i = 0; i < found.size(); ++i) {
-            const auto &rect = found[i];
-            const double left = std::clamp(static_cast<double>(rect.x) / scale, 0.0,
-                                           static_cast<double>(frame.width));
-            const double top = std::clamp(static_cast<double>(rect.y) / scale, 0.0,
-                                          static_cast<double>(frame.height));
-            const double right = std::clamp(
-                (static_cast<double>(rect.x) + rect.width) / scale, 0.0,
-                static_cast<double>(frame.width));
-            const double bottom = std::clamp(
-                (static_cast<double>(rect.y) + rect.height) / scale, 0.0,
-                static_cast<double>(frame.height));
-            if (!(left < right && top < bottom))
-                continue;
-
-            const double confidence = i < weights.size() ? weights[i] : 0.0;
-            if (!std::isfinite(confidence) || confidence < hit_threshold_)
-                continue;
-
-            observations.push_back(
-                {{normalized(left, frame.width), normalized(top, frame.height),
-                  normalized(right, frame.width), normalized(bottom, frame.height)},
-                 static_cast<float>(confidence), frame.timestamp_ns});
-        }
-        std::stable_sort(observations.begin(), observations.end(),
-                         [](const TargetObservation &left, const TargetObservation &right) {
-                             return left.confidence > right.confidence;
-                         });
-        return observations;
-    } catch (const cv::Exception &) {
+    if (bgr.cols < hog_.winSize.width || bgr.rows < hog_.winSize.height)
         return {};
+
+    const auto largest_dimension = std::max(frame.width, frame.height);
+    const double scale = largest_dimension > max_dimension_
+                             ? static_cast<double>(max_dimension_) / largest_dimension
+                             : 1.0;
+    cv::Mat search_image;
+    if (scale < 1.0) {
+        cv::resize(bgr, search_image, {}, scale, scale, cv::INTER_AREA);
+    } else {
+        search_image = bgr;
     }
+
+    if (search_image.cols < hog_.winSize.width || search_image.rows < hog_.winSize.height)
+        return {};
+
+    std::vector<cv::Rect> found;
+    std::vector<double> weights;
+    hog_.detectMultiScale(search_image, found, weights, hit_threshold_, cv::Size(8, 8),
+                          cv::Size(32, 32), 1.05, 2.0, false);
+
+    std::vector<TargetObservation> observations;
+    observations.reserve(found.size());
+    for (std::size_t i = 0; i < found.size(); ++i) {
+        const auto &rect = found[i];
+        const double left = std::clamp(static_cast<double>(rect.x) / scale, 0.0,
+                                       static_cast<double>(frame.width));
+        const double top = std::clamp(static_cast<double>(rect.y) / scale, 0.0,
+                                      static_cast<double>(frame.height));
+        const double right = std::clamp(
+            (static_cast<double>(rect.x) + rect.width) / scale, 0.0,
+            static_cast<double>(frame.width));
+        const double bottom = std::clamp(
+            (static_cast<double>(rect.y) + rect.height) / scale, 0.0,
+            static_cast<double>(frame.height));
+        if (!(left < right && top < bottom))
+            continue;
+
+        const double confidence = i < weights.size() ? weights[i] : 0.0;
+        if (!std::isfinite(confidence) || confidence < hit_threshold_)
+            continue;
+
+        observations.push_back(
+            {{normalized(left, frame.width), normalized(top, frame.height),
+              normalized(right, frame.width), normalized(bottom, frame.height)},
+             static_cast<float>(confidence), frame.timestamp_ns});
+    }
+    std::stable_sort(observations.begin(), observations.end(),
+                     [](const TargetObservation &left, const TargetObservation &right) {
+                         return left.confidence > right.confidence;
+                     });
+    return observations;
 }
 
 } // namespace church

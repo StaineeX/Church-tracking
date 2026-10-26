@@ -13,6 +13,7 @@
 #include <mutex>
 #include <stdexcept>
 #include <thread>
+#include <utility>
 #include <vector>
 
 using namespace std::chrono_literals;
@@ -30,6 +31,17 @@ void check(bool ok, const char *message)
 church::VideoFrame frame(std::int64_t timestamp_ns)
 {
     return {{1, 2, 3, 4}, 1, 1, 4, church::PixelFormat::rgba8, timestamp_ns};
+}
+
+bool submit_until_accepted(church::TrackingWorker &worker, const church::VideoFrame &source)
+{
+    for (int attempt = 0; attempt < 1000; ++attempt) {
+        auto frame_attempt = source;
+        if (worker.submit(std::move(frame_attempt)))
+            return true;
+        std::this_thread::yield();
+    }
+    return false;
 }
 
 bool wait_for_timestamp(church::TrackingWorker &worker, std::int64_t timestamp_ns)
@@ -72,12 +84,12 @@ void worker_publishes_synthetic_crop_state_from_submitted_frames()
 {
     church::TrackingWorker worker;
     worker.start();
-    check(worker.submit(frame(900000000000LL)), "first synthetic frame submitted");
+    check(submit_until_accepted(worker, frame(900000000000LL)), "first synthetic frame submitted");
     check(wait_for_tracking(worker), "first synthetic state published");
     auto first = worker.snapshot();
     check(first && first->tracking && first->timestamp_ns == 0,
           "arbitrary input origin becomes relative zero");
-    check(worker.submit(frame(905000000000LL)), "later synthetic frame submitted");
+    check(submit_until_accepted(worker, frame(905000000000LL)), "later synthetic frame submitted");
     check(wait_for_timestamp(worker, 5000000000LL), "later state published");
     auto later = worker.snapshot();
     check(later && later->tracking && later->timestamp_ns == 5000000000LL,
@@ -170,18 +182,19 @@ void worker_resets_state_before_accepting_frame_after_inflight_invalidation()
         }
     });
     worker.start();
-    worker.submit(frame(0));
+    check(submit_until_accepted(worker, frame(0)), "old epoch frame submitted");
     check(wait_for_tracking(worker), "old epoch starts tracking");
-    worker.submit(frame(1000000000));
+    check(submit_until_accepted(worker, frame(1000000000)), "old epoch clock frame submitted");
     check(wait_for_timestamp(worker, 1000000000), "old epoch advances the motion clock");
-    worker.submit(frame(2000000000));
+    check(submit_until_accepted(worker, frame(2000000000)), "old epoch crop frame submitted");
     check(wait_for_timestamp(worker, 2000000000), "old epoch builds a tracking crop");
     const auto old_crop = worker.snapshot();
     check(old_crop && old_crop->tracking && old_crop->zoom > 1.0f,
           "old epoch leaves non-neutral motion state");
 
     arm_before_publish.store(true, std::memory_order_release);
-    worker.submit(frame(3000000000));
+    check(submit_until_accepted(worker, frame(3000000000)),
+          "in-flight invalidation frame submitted");
     {
         std::unique_lock lock(hook_mutex);
         check(hook_cv.wait_for(lock, 2s, [&] { return first_hook_entered; }),
@@ -198,7 +211,8 @@ void worker_resets_state_before_accepting_frame_after_inflight_invalidation()
     check(hook_invalidations.load(std::memory_order_acquire) == 1,
           "before-publish hook invalidates exactly once");
 
-    check(worker.submit(frame(4000000000)), "new epoch frame queues while publication is paused");
+    check(submit_until_accepted(worker, frame(4000000000)),
+          "new epoch frame queues while publication is paused");
     {
         std::lock_guard lock(hook_mutex);
         release_first_hook = true;
@@ -268,10 +282,11 @@ void worker_tracker_holds_target_between_detections_then_resets_on_loss()
     church::TrackingWorker worker(std::make_unique<OneTargetDetector>(),
                                   std::make_unique<church::PersonTracker>());
     worker.start();
-    worker.submit(frame(10));
+    check(submit_until_accepted(worker, frame(10)), "prediction seed frame submitted");
     check(wait_for_tracking(worker), "detector supplied first target");
     for (int i = 1; i <= 6; ++i) {
-        worker.submit(frame(10 + i * 100000000LL));
+        check(submit_until_accepted(worker, frame(10 + i * 100000000LL)),
+              "prediction frame submitted");
         check(wait_for_timestamp(worker, i * 100000000LL),
               "tracker processed next frame");
         auto state = worker.snapshot();
@@ -286,10 +301,11 @@ void worker_preserves_exact_ordinary_frame_timestamps()
     church::TrackingWorker worker;
     worker.start();
     constexpr std::int64_t frame_period_ns = 33333333;
-    worker.submit(frame(0));
+    check(submit_until_accepted(worker, frame(0)), "ordinary origin frame submitted");
     check(wait_for_tracking(worker), "first ordinary cadence frame processed");
     for (int frame_number = 1; frame_number < 5; ++frame_number) {
-        worker.submit(frame(frame_number * frame_period_ns));
+        check(submit_until_accepted(worker, frame(frame_number * frame_period_ns)),
+              "ordinary cadence frame submitted");
         check(wait_for_exact_timestamp(worker, frame_number * frame_period_ns),
               "ordinary frame cadence keeps exact nanosecond timestamp");
     }
@@ -376,10 +392,11 @@ void worker_uses_predicted_target_when_people_cross()
     auto *tracker_ptr = tracker.get();
     church::TrackingWorker worker(std::make_unique<CrossingDetector>(), std::move(tracker));
     worker.start();
-    worker.submit(frame(0));
+    check(submit_until_accepted(worker, frame(0)), "crossing origin frame submitted");
     check(wait_for_tracking(worker), "crossing detector supplies the initial target");
     for (int frame_number = 1; frame_number <= 6; ++frame_number) {
-        worker.submit(frame(frame_number * 100'000'000LL));
+        check(submit_until_accepted(worker, frame(frame_number * 100'000'000LL)),
+              "crossing frame submitted");
         check(wait_for_timestamp(worker, frame_number * 100'000'000LL),
               "crossing sequence advances to the next frame");
     }
@@ -394,9 +411,9 @@ public:
     std::vector<church::TargetObservation> detect(const church::VideoFrame &frame) override
     {
         const int call = calls.fetch_add(1);
-        if (call == 0)
-            throw std::runtime_error("detector failure");
         if (call == 1)
+            throw std::runtime_error("detector failure");
+        if (call == 2)
             throw 7;
         return {{{0.45f, 0.45f, 0.55f, 0.55f}, 1.0f, frame.timestamp_ns}};
     }
@@ -411,21 +428,95 @@ void worker_recovers_from_detector_exceptions()
     church::TrackingWorker worker(std::move(detector),
                                   std::make_unique<church::PersonTracker>());
     worker.start();
-    worker.submit(frame(0));
-    const auto deadline = std::chrono::steady_clock::now() + 2s;
-    while (detector_ptr->calls.load() < 1 && std::chrono::steady_clock::now() < deadline)
-        std::this_thread::sleep_for(1ms);
-    check(detector_ptr->calls.load() == 1, "throwing detector was invoked");
-    auto after_failure = worker.snapshot();
-    check(after_failure && !after_failure->tracking && after_failure->zoom == 1.0f,
-          "detector failure publishes a neutral crop");
-    for (int frame_number = 1; frame_number <= 6; ++frame_number) {
-        worker.submit(frame(frame_number * 100'000'000LL));
+    check(submit_until_accepted(worker, frame(0)), "detector seed frame submitted");
+    check(wait_for_tracking(worker), "detector establishes tracking before failure");
+    for (int frame_number = 1; frame_number <= 3; ++frame_number) {
+        check(submit_until_accepted(worker, frame(frame_number * 100'000'000LL)),
+              "detector failure frame submitted");
         check(wait_for_timestamp(worker, frame_number * 100'000'000LL),
-              "worker continues after detector exception");
+              "worker advances through detector exception");
     }
-    check(detector_ptr->calls.load() == 3, "worker reaches a later detector pass");
+    check(detector_ptr->calls.load() == 2, "standard detector exception was invoked");
+    const auto after_standard_failure = worker.snapshot();
+    check(after_standard_failure && !after_standard_failure->tracking &&
+              after_standard_failure->zoom == 1.0f &&
+              after_standard_failure->visible_region.left == 0.0f &&
+              after_standard_failure->visible_region.top == 0.0f &&
+              after_standard_failure->visible_region.right == 1.0f &&
+              after_standard_failure->visible_region.bottom == 1.0f,
+          "detector failure clears the predicted crop to neutral state");
+    for (int frame_number = 4; frame_number <= 6; ++frame_number) {
+        check(submit_until_accepted(worker, frame(frame_number * 100'000'000LL)),
+              "unknown detector failure frame submitted");
+        check(wait_for_timestamp(worker, frame_number * 100'000'000LL),
+              "worker continues after unknown detector exception");
+    }
+    check(detector_ptr->calls.load() == 3, "unknown detector exception was invoked");
+    for (int frame_number = 7; frame_number <= 9; ++frame_number) {
+        check(submit_until_accepted(worker, frame(frame_number * 100'000'000LL)),
+              "detector recovery frame submitted");
+        check(wait_for_timestamp(worker, frame_number * 100'000'000LL),
+              "worker continues toward a valid detector frame");
+    }
+    check(detector_ptr->calls.load() == 4, "worker reaches a later valid detector pass");
     check(worker.snapshot()->tracking, "worker resumes tracking after detector exceptions");
+    worker.stop();
+}
+
+class ThrowingTracker final : public church::Tracker {
+public:
+    explicit ThrowingTracker(bool unknown_exception) : unknown_exception_(unknown_exception) {}
+
+    void reset() override
+    {
+        ++reset_calls;
+        target_.reset();
+    }
+
+    void set_target(church::TargetObservation target) override { target_ = target; }
+    std::optional<church::TargetObservation> current_target() const override { return target_; }
+
+    std::optional<church::TargetObservation> update(const church::VideoFrame &frame) override
+    {
+        if (update_calls_++ == 0) {
+            if (unknown_exception_)
+                throw 7;
+            throw std::runtime_error("tracker failure");
+        }
+        if (target_)
+            target_->timestamp_ns = frame.timestamp_ns;
+        return target_;
+    }
+
+    int reset_calls = 0;
+
+private:
+    bool unknown_exception_;
+    int update_calls_ = 0;
+    std::optional<church::TargetObservation> target_;
+};
+
+void worker_recovers_from_tracker_exception(bool unknown_exception)
+{
+    auto tracker = std::make_unique<ThrowingTracker>(unknown_exception);
+    auto *tracker_ptr = tracker.get();
+    church::TrackingWorker worker(std::make_unique<StaleDetector>(), std::move(tracker));
+    worker.start();
+    check(submit_until_accepted(worker, frame(0)), "tracker seed frame submitted");
+    check(wait_for_tracking(worker), "tracker establishes tracking before failure");
+    check(submit_until_accepted(worker, frame(100'000'000)), "tracker failure frame submitted");
+    check(wait_for_timestamp(worker, 100'000'000), "worker reaches throwing tracker update");
+    const auto after_failure = worker.snapshot();
+    check(after_failure && !after_failure->tracking && after_failure->zoom == 1.0f,
+          unknown_exception ? "unknown tracker failure clears tracking"
+                            : "standard tracker failure clears tracking");
+    check(submit_until_accepted(worker, frame(200'000'000)), "tracker recovery frame submitted");
+    check(wait_for_timestamp(worker, 200'000'000), "worker continues after tracker failure");
+    check(submit_until_accepted(worker, frame(300'000'000)), "tracker re-detection frame submitted");
+    check(wait_for_tracking(worker), "worker recovers on a later valid tracker frame");
+    check(tracker_ptr->reset_calls > 0,
+          unknown_exception ? "unknown tracker failure invokes reset"
+                            : "standard tracker failure invokes reset");
     worker.stop();
 }
 
@@ -457,10 +548,10 @@ void worker_associates_detection_with_existing_target()
     auto *tracker_ptr = tracker.get();
     church::TrackingWorker worker(std::make_unique<AssociationDetector>(), std::move(tracker));
     worker.start();
-    worker.submit(frame(0));
+    check(submit_until_accepted(worker, frame(0)), "association origin frame submitted");
     check(wait_for_tracking(worker), "initial association target published");
     for (int frame_number = 1; frame_number <= 3; ++frame_number) {
-        worker.submit(frame(frame_number));
+        check(submit_until_accepted(worker, frame(frame_number)), "association frame submitted");
         check(wait_for_timestamp(worker, frame_number), "association cadence frame processed");
     }
     check(tracker_ptr->selected.size() == 2, "both detection results reached the tracker");
@@ -475,13 +566,13 @@ void worker_does_not_seed_tracker_from_future_detection()
     auto *detector_ptr = detector.get();
     church::TrackingWorker worker(std::move(detector));
     worker.start();
-    worker.submit(frame(1000000000));
+    check(submit_until_accepted(worker, frame(1000000000)), "future origin frame submitted");
     const auto deadline = std::chrono::steady_clock::now() + 2s;
     while (detector_ptr->calls.load() == 0 && std::chrono::steady_clock::now() < deadline)
         std::this_thread::sleep_for(1ms);
     check(detector_ptr->calls.load() == 1, "future detection frame reached detector");
     std::this_thread::sleep_for(1ms);
-    worker.submit(frame(1033333333));
+    check(submit_until_accepted(worker, frame(1033333333)), "future follow-up frame submitted");
     check(wait_for_exact_timestamp(worker, 33333333), "following frame processed");
     auto state = worker.snapshot();
     check(state && !state->tracking,
@@ -493,10 +584,11 @@ void worker_uses_full_elapsed_time_for_stale_observations()
 {
     church::TrackingWorker worker(std::make_unique<StaleDetector>());
     worker.start();
-    worker.submit(frame(1000000000));
+    check(submit_until_accepted(worker, frame(1000000000)), "stale origin frame submitted");
     check(wait_for_tracking(worker), "initial observation accepted");
     for (int i = 1; i <= 3; ++i) {
-        worker.submit(frame(1000000000LL + i * 2000000000LL));
+        check(submit_until_accepted(worker, frame(1000000000LL + i * 2000000000LL)),
+              "stale observation frame submitted");
         check(wait_for_timestamp(worker, i * 2000000000LL),
               "worker processed successive relative timestamps");
     }
@@ -510,9 +602,11 @@ void worker_saturates_extreme_relative_timestamps()
 {
     church::TrackingWorker worker;
     worker.start();
-    worker.submit(frame(std::numeric_limits<std::int64_t>::min()));
+    check(submit_until_accepted(worker, frame(std::numeric_limits<std::int64_t>::min())),
+          "extreme origin frame submitted");
     check(wait_for_tracking(worker), "extreme negative origin processed");
-    worker.submit(frame(std::numeric_limits<std::int64_t>::max()));
+    check(submit_until_accepted(worker, frame(std::numeric_limits<std::int64_t>::max())),
+          "extreme follow-up frame submitted");
     check(wait_for_timestamp(worker, 1000000000),
           "extreme relative timestamp advances without signed overflow");
     worker.stop();
@@ -523,16 +617,16 @@ void worker_drops_old_frames_when_processing_is_delayed()
     auto gate = std::make_shared<Gate>();
     church::TrackingWorker worker(std::make_unique<DelayedDetector>(gate));
     worker.start();
-    worker.submit(frame(1000000000));
+    check(submit_until_accepted(worker, frame(1000000000)), "delayed origin frame submitted");
     {
         std::unique_lock lock(gate->mutex);
         check(gate->cv.wait_for(lock, 2s, [&] { return gate->entered; }),
               "detector entered delayed call");
     }
     const auto before = std::chrono::steady_clock::now();
-    worker.submit(frame(2000000000));
-    worker.submit(frame(3000000000));
-    worker.submit(frame(4000000000));
+    check(submit_until_accepted(worker, frame(2000000000)), "delayed frame 2 submitted");
+    check(submit_until_accepted(worker, frame(3000000000)), "delayed frame 3 submitted");
+    check(submit_until_accepted(worker, frame(4000000000)), "delayed frame 4 submitted");
     check(std::chrono::steady_clock::now() - before < 100ms,
           "submissions do not wait for detector");
     auto during = worker.snapshot();
@@ -570,7 +664,7 @@ void worker_stop_unblocks_and_joins_cleanly()
     auto gate = std::make_shared<Gate>();
     church::TrackingWorker busy(std::make_unique<DelayedDetector>(gate));
     busy.start();
-    busy.submit(frame(10));
+    check(submit_until_accepted(busy, frame(10)), "busy worker frame submitted");
     {
         std::unique_lock lock(gate->mutex);
         check(gate->cv.wait_for(lock, 2s, [&] { return gate->entered; }),
@@ -593,7 +687,7 @@ void worker_never_calls_graphics_or_requires_obs()
 {
     church::TrackingWorker worker;
     worker.start();
-    worker.submit(frame(17));
+    check(submit_until_accepted(worker, frame(17)), "core-only frame submitted");
     check(wait_for_tracking(worker), "core-only worker runs from plain pixel frame");
     worker.stop();
 }
@@ -609,6 +703,8 @@ int main()
     worker_associates_detection_with_existing_target();
     worker_uses_predicted_target_when_people_cross();
     worker_recovers_from_detector_exceptions();
+    worker_recovers_from_tracker_exception(false);
+    worker_recovers_from_tracker_exception(true);
     worker_uses_full_elapsed_time_for_stale_observations();
     worker_saturates_extreme_relative_timestamps();
     worker_drops_old_frames_when_processing_is_delayed();
