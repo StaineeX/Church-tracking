@@ -6,9 +6,58 @@ if(NOT EXISTS "${SOURCE_ROOT}/data/effects/church-director.effect" OR
    NOT EXISTS "${SOURCE_ROOT}/data/locale/en-US.ini")
   message(FATAL_ERROR "OBS effect or locale asset is missing")
 endif()
+file(READ "${SOURCE_ROOT}/data/locale/en-US.ini" locale_text)
+if(NOT locale_text MATCHES "ChurchDirector.Filter=Church Director Smart Camera")
+  message(FATAL_ERROR "OBS filter locale label must identify the Church Director Smart Camera")
+endif()
+
+file(READ "${SOURCE_ROOT}/data/effects/church-director.effect" effect_text)
+foreach(contract IN ITEMS "VertData VSDefault(VertData v_in)"
+                          "float4 PSCrop(VertData v_in)"
+                          "vertex_shader = VSDefault(v_in);"
+                          "pixel_shader = PSCrop(v_in);")
+  string(FIND "${effect_text}" "${contract}" contract_offset)
+  if(contract_offset LESS 0)
+    message(FATAL_ERROR "OBS effect shader contract is missing: ${contract}")
+  endif()
+endforeach()
 
 file(READ "${SOURCE_ROOT}/src/obs/church_director_filter.cpp" filter_source)
 string(REPLACE "\n" " " filter_source_one_line "${filter_source}")
+foreach(contract IN ITEMS "filter_video(void *data, obs_source_frame *frame)"
+                          "value.filter_video = filter_video;"
+                          "obs_data_set_default_bool(settings, synthetic_key, false);"
+                          "tracking_armed_key"
+                          "obs_hotkey_register_source"
+                          "filter_add"
+                          "ChurchDirector.ToggleTracking"
+                          "obs_source_skip_video_filter"
+                          "VIDEO_FORMAT_RGBA" "VIDEO_FORMAT_BGRA"
+                          "VIDEO_FORMAT_BGRX" "VIDEO_FORMAT_BGR3"
+                          "VIDEO_FORMAT_NV12" "VIDEO_FORMAT_I420"
+                          "frame_conversion_error_logged"
+                          "unable to convert frame for tracking"
+                          "format=%d" "dimensions=%ux%u"
+                          "state->invalidate();")
+  string(FIND "${filter_source}" "${contract}" contract_offset)
+  if(contract_offset LESS 0)
+    message(FATAL_ERROR "OBS filter layout is missing required contract: ${contract}")
+  endif()
+endforeach()
+file(READ "${SOURCE_ROOT}/CMakeLists.txt" root_cmake)
+foreach(contract IN ITEMS "find_package(OpenCV 4.5 REQUIRED COMPONENTS core imgproc objdetect)")
+  string(FIND "${root_cmake}" "${contract}" contract_offset)
+  if(contract_offset LESS 0)
+    message(FATAL_ERROR "CMake is missing plugin-required OpenCV contract: ${contract}")
+  endif()
+endforeach()
+file(READ "${SOURCE_ROOT}/cmake/obs-plugin.cmake" plugin_cmake)
+foreach(contract IN ITEMS "OpenCV_INCLUDE_DIRS" "OpenCV_LIBS")
+  string(FIND "${plugin_cmake}" "${contract}" contract_offset)
+  if(contract_offset LESS 0)
+    message(FATAL_ERROR "OBS plugin target is missing OpenCV propagation: ${contract}")
+  endif()
+endforeach()
 string(FIND "${filter_source_one_line}"
   "obs_source_t *parent = obs_filter_get_target(filter->source);" parent_offset)
 if(parent_offset LESS 0)

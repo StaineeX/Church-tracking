@@ -11,12 +11,13 @@ set(CHURCH_DIRECTOR_LINUX_MODULE_DESTINATION "${CMAKE_INSTALL_LIBDIR}/obs-plugin
 
 function(church_director_add_obs_plugin target)
   find_package(libobs REQUIRED)
+  find_package(OpenCV 4.5 REQUIRED COMPONENTS core imgproc objdetect)
   add_library(${target} MODULE
     "${PROJECT_SOURCE_DIR}/src/obs/plugin_main.cpp"
     "${PROJECT_SOURCE_DIR}/src/obs/church_director_filter.cpp"
     "${PROJECT_SOURCE_DIR}/src/obs/filter_state.cpp")
-  target_include_directories(${target} PRIVATE "${PROJECT_SOURCE_DIR}/src")
-  target_link_libraries(${target} PRIVATE OBS::libobs church_director_core)
+  target_include_directories(${target} PRIVATE "${PROJECT_SOURCE_DIR}/src" ${OpenCV_INCLUDE_DIRS})
+  target_link_libraries(${target} PRIVATE OBS::libobs church_director_core ${OpenCV_LIBS})
   set_target_properties(${target} PROPERTIES PREFIX "" OUTPUT_NAME "church-director")
   church_director_enable_warnings(${target})
 endfunction()

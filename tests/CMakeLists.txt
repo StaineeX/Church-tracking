@@ -18,6 +18,24 @@ target_link_libraries(tracking_worker_tests PRIVATE church_director_core)
 church_director_enable_warnings(tracking_worker_tests)
 add_test(NAME tracking_worker COMMAND tracking_worker_tests)
 
+add_executable(frame_conversion_tests frame_conversion_tests.cpp)
+target_link_libraries(frame_conversion_tests PRIVATE church_director_core)
+church_director_enable_warnings(frame_conversion_tests)
+add_test(NAME frame_conversion COMMAND frame_conversion_tests)
+
+add_executable(person_tracker_tests person_tracker_tests.cpp)
+target_link_libraries(person_tracker_tests PRIVATE church_director_core)
+church_director_enable_warnings(person_tracker_tests)
+add_test(NAME person_tracker COMMAND person_tracker_tests)
+
+if(BUILD_OPENCV_TESTS)
+  add_executable(person_detector_tests person_detector_tests.cpp)
+  target_include_directories(person_detector_tests PRIVATE ${OpenCV_INCLUDE_DIRS})
+  target_link_libraries(person_detector_tests PRIVATE church_director_core ${OpenCV_LIBS})
+  church_director_enable_warnings(person_detector_tests)
+  add_test(NAME person_detector COMMAND person_detector_tests)
+endif()
+
 include(GNUInstallDirs)
 
 add_executable(filter_state_tests filter_state_tests.cpp ../src/obs/filter_state.cpp)

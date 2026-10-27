@@ -53,6 +53,12 @@ float zoom_for_center(float x, float y)
 MotionEngine::MotionEngine(MotionSettings settings)
     : settings_(sanitize_settings(settings))
 {
+    reset();
+}
+
+void MotionEngine::reset()
+{
+    state_ = {};
     state_.visible_region = settings_.visible_region;
     const float width = settings_.visible_region.right - settings_.visible_region.left;
     const float height = settings_.visible_region.bottom - settings_.visible_region.top;

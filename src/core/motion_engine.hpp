@@ -36,6 +36,7 @@ struct MotionSettings {
 class MotionEngine {
 public:
     explicit MotionEngine(MotionSettings settings = {});
+    void reset();
     CropState update(std::optional<TargetObservation> target, float delta_seconds);
     CropState update_at(std::optional<TargetObservation> target, float motion_delta_seconds,
                         std::int64_t timestamp_ns);
