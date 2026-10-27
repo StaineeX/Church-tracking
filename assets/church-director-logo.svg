@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" role="img" aria-labelledby="logo-title logo-description">
+  <title id="logo-title">Church Director for OBS</title>
+  <desc id="logo-description">A dark-blue camera with a gold lens and a white cross.</desc>
+
+  <defs>
+    <linearGradient id="camera-body" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#162a52"/>
+      <stop offset="1" stop-color="#07142d"/>
+    </linearGradient>
+    <linearGradient id="lens-ring" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffe7a1"/>
+      <stop offset="0.45" stop-color="#f4ba45"/>
+      <stop offset="1" stop-color="#c98216"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="20" y="48" width="280" height="132" rx="28" fill="url(#camera-body)" stroke="#f7f9ff" stroke-width="5"/>
+  <path d="M58 48 78 22h70l20 26Z" fill="#102348" stroke="#f7f9ff" stroke-width="5" stroke-linejoin="round"/>
+  <rect x="45" y="78" width="24" height="46" rx="12" fill="#f4ba45"/>
+  <circle cx="192" cy="114" r="55" fill="#061126" stroke="url(#lens-ring)" stroke-width="12"/>
+  <circle cx="192" cy="114" r="37" fill="#0d2244" stroke="#f7f9ff" stroke-opacity="0.4" stroke-width="3"/>
+  <circle cx="178" cy="99" r="10" fill="#ffffff" fill-opacity="0.32"/>
+
+  <path d="M187 79h10v25h19v10h-19v27h-10v-27h-19v-10h19Z" fill="#ffffff"/>
+  <circle cx="267" cy="69" r="8" fill="#f4ba45"/>
+</svg>
