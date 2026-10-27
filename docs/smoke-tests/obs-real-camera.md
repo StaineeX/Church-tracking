@@ -1,25 +1,90 @@
-# OBS real-camera tracking smoke test
+# Teste de rastreamento com câmera real no OBS
 
-This is a manual OBS runtime check for the real person-tracking path. A green CTest run proves unit/layout behavior only; it does not prove that OBS loaded the module, that a camera frame was copied, or that a person was detected. Use a host with OBS Studio, a working display/graphics backend, a camera, OpenCV >= 4.5 runtime libraries, and the built `church-director` plugin installed in OBS's module search path. No model download or cloud account is needed.
+Esta é uma verificação manual de execução no OBS para o caminho de rastreamento
+real de pessoas. Um CTest verde prova apenas o comportamento unitário/layout;
+não prova que o OBS carregou o módulo, que um frame foi copiado ou que uma
+pessoa foi detectada. Use um computador com OBS Studio, backend gráfico ativo,
+câmera, bibliotecas de execução OpenCV >= 4.5 e o plugin `church-director`
+instalado no caminho de módulos do OBS. Não é necessário baixar modelos nem
+usar uma conta na nuvem.
 
-## Setup and evidence
+## Preparação e evidências
 
-1. Start OBS with a **clean OBS profile** and a new, empty scene collection. Record the OBS version, operating system, plugin commit, build preset, install prefix, camera name, and whether the plugin loaded. Keep the OBS log from this launch.
-2. Check platform permissions before adding the source. For **Windows camera privacy**, allow camera access and desktop-app access for OBS in Settings → Privacy & security → Camera. For **macOS camera privacy**, enable OBS in System Settings → Privacy & Security → Camera and restart OBS if requested. For **Linux device/portal permissions**, allow the OBS user to open the V4L2 device and grant the camera portal permission when OBS is sandboxed/Flatpak. Record denied-device or portal errors as unavailable.
-3. Add one working **camera source** and confirm its unfiltered preview is visible. Use stable lighting and place one or more people upright and fully visible at useful scale. Preserve a screenshot of the source and filter settings.
-4. Open the source's Filters and add `church_director_filter`. Leave **Real person tracking** selected; it is the default mode. Do not enable Synthetic target mode for this test. Leave **Tracking armed** off until the camera framing is ready.
-5. In OBS Settings → Hotkeys, assign a shortcut to the **Toggle Church Director tracking** action listed under the camera source that owns the filter, and map that shortcut to the physical PTZ controller button or its Windows macro software. Use the hotkey to arm only after the operator is ready, and use it to disarm immediately before taking manual PTZ control. A PTZ controller that exposes only VISCA/serial/IP needs a model-specific adapter, which is outside this slice.
-6. Confirm the source format is one of the supported conversion paths: RGBA, BGRA, BGRX, BGR3, NV12, or I420. The submitted frame must have valid planes, dimensions, and padded strides. Unsupported or malformed frames must fail closed without crashing OBS; record the format and the relevant OBS log message if that happens.
+1. Inicie o OBS com um **perfil OBS limpo** e uma coleção de cenas vazia. Anote
+   a versão do OBS, o sistema operacional, o commit do plugin, o preset de
+   build, o prefixo de instalação, o nome da câmera e se o plugin carregou.
+   Guarde o log do OBS desta inicialização.
+2. Verifique as permissões da plataforma antes de adicionar a fonte. No
+   **Windows**, abra Configurações → Privacidade e segurança → Câmera e permita
+   o acesso à câmera e aos aplicativos de desktop para o OBS. No **macOS**, abra
+   Ajustes do Sistema → Privacidade e Segurança → Câmera, ative o OBS e reinicie
+   quando solicitado. No **Linux**, verifique as permissões de dispositivo/portal:
+   permita que o usuário do OBS abra o dispositivo V4L2 e conceda a permissão do
+   portal de câmera quando o OBS for sandboxed/Flatpak. Registre erros de
+   dispositivo ou portal negados como indisponíveis.
+3. Adicione uma **fonte de câmera** funcional e confirme que a prévia sem filtro
+   está visível. Use iluminação estável e deixe uma ou mais pessoas de pé,
+   totalmente visíveis e em tamanho útil. Salve uma captura da fonte e das
+   configurações do filtro.
+4. Abra os Filtros da fonte e adicione `church_director_filter`. Mantenha
+   **Real person tracking** selecionado; este é o modo padrão. Não ative
+   Synthetic target mode neste teste. Deixe **Tracking armed** desligado até o
+   enquadramento estar pronto.
+5. Em Configurações → Atalhos do OBS, atribua uma tecla à ação **Toggle Church
+   Director tracking** listada na fonte pai que contém o filtro. Se quiser,
+   associe a mesma tecla ao botão do controle PTZ físico ou ao software de macro
+   do Windows. Arme somente quando estiver pronto e desarme imediatamente antes
+   de assumir o controle manual da PTZ. Um controle que ofereça apenas VISCA,
+   serial ou IP precisa de um adaptador específico, fora deste escopo.
+6. Confirme que o formato da fonte é um dos caminhos suportados: RGBA, BGRA,
+   BGRX, BGR3, NV12 ou I420. O frame enviado deve ter planos, dimensões e
+   strides válidos. Frames incompatíveis ou malformados devem falhar de forma
+   segura, sem derrubar o OBS; registre o formato e a mensagem relevante do log.
 
-## Expected behavior
+## Comportamento esperado
 
-7. Press the assigned hotkey to arm tracking. Watch the source preview for at least 30 seconds. A visible person should produce detection and bounded pan/crop motion that keeps the target near the configured framing; expect zoom motion only when the target framing requires it. Capture a short preview recording or timestamped screenshots at the start, during any zoom motion, and near the end. The preview must not turn black, freeze, or expose pixels outside the source bounds.
-8. With multiple people visible, keep the scene stable for at least 15 seconds. The first selected target should remain stable rather than switching to a distant, higher-confidence person. The spatial lock is intentionally not face recognition; to intentionally choose another person, disarm and re-arm after framing the new subject. Record which person was selected and any switch.
-9. Move everyone out of frame for at least 2 seconds. Tracking may predict briefly, then it must fall back to neutral motion when the observation is stale; it must not keep panning indefinitely. Record the no-person interval and the fallback behavior.
-10. Press the hotkey to disarm and verify the unmodified camera source reappears and tracking work stops. Re-arm it and verify detection resumes. Then **remove** the filter and **re-add** it. Repeat this arm/disarm and disable/remove/re-add cycle **three times**. After every cycle, verify that OBS remains responsive, the preview returns to the full source when disarmed/removed, and a newly added filter starts disarmed.
+7. Pressione a tecla atribuída para armar o rastreamento. Observe a prévia por
+   pelo menos 30 segundos. Uma pessoa visível deve produzir detecção e movimento
+   limitado de pan/crop, mantendo o alvo no enquadramento; espere movimento de
+   zoom somente quando o enquadramento exigir. Grave um trecho curto ou faça
+   capturas com horário no início, durante qualquer zoom e perto do fim. A prévia
+   não pode ficar preta, congelar ou mostrar pixels fora dos limites da fonte.
+8. Com várias pessoas visíveis, mantenha a cena estável por pelo menos 15
+   segundos. A primeira pessoa selecionada deve permanecer estável, sem trocar
+   para alguém distante com maior confiança. O bloqueio espacial não é
+   reconhecimento facial; para escolher outra pessoa, desarme e arme novamente
+   depois de enquadrar o novo alvo. Registre qual pessoa foi selecionada e
+   qualquer troca.
+9. Faça todas as pessoas saírem do enquadramento por pelo menos 2 segundos. O
+   rastreamento pode prever por pouco tempo, mas deve voltar ao movimento neutro
+   quando a observação ficar desatualizada; não pode continuar fazendo pan sem
+   limite. Registre o intervalo sem pessoas e o comportamento de retorno.
+10. Pressione a tecla para desarmar e confirme que a fonte de câmera sem alteração
+    reaparece e que o trabalho de rastreamento parou. Arme novamente e confirme
+    que a detecção volta. Depois, **remova** o filtro e **adicione-o novamente**.
+    Repita o ciclo de armar/desarmar e desativar/remover/adicionar novamente
+    **três vezes**. Em cada ciclo, confirme que o OBS continua responsivo, que a
+    prévia volta à fonte inteira ao desarmar/remover e que um filtro novo começa
+    desarmado.
 
-## Logs and unavailable results
+## Logs e resultados indisponíveis
 
-Preserve the exact OBS log (`Help → Log Files → View Current Log File`, then save it), OBS version/build, plugin commit, module and installed effect/locale paths, camera/source settings, filter screenshot, source screenshot, and preview video or timestamped screenshots. Record each cycle's result and every `Church Director` warning/error. A passing smoke result requires visible detection and pan/crop motion, plus zoom motion when the target framing requires it, and clean repeated shutdown; unit/layout evidence is not a substitute.
+Guarde o log exato do OBS (Ajuda → Arquivos de log → Ver arquivo de log atual),
+a versão/build do OBS, o commit do plugin, os caminhos do módulo e dos arquivos
+de efeito/locale instalados, as configurações da câmera/fonte, a captura do
+filtro, a captura da fonte e o vídeo ou as imagens com horário. Registre o
+resultado de cada ciclo e cada aviso/erro do Church Director. Um teste aprovado
+exige detecção e movimento visíveis de pan/crop, zoom somente quando o
+enquadramento exigir e encerramento repetido sem erros; a evidência unitária/
+layout não substitui o teste no OBS.
 
-If the check cannot run, report it as **unavailable**, not passed. State the exact failing check and scope, for example: `OBS executable absent`, `camera source unavailable`, `plugin not built because libobs or OpenCV development files were absent`, `OpenCV runtime library unavailable`, `plugin not listed in OBS Filters`, or `graphics/display backend unavailable`. Attach the command or UI observation and diagnostic/log, with platform, OBS version if known, plugin-build status, and which steps were not attempted. Report plugin dependency/configure/build/install evidence separately from the OBS runtime smoke result. Do not claim detection, pan/crop/zoom, no-person fallback, or cleanup without observing it in OBS.
+Se o teste não puder ser executado, marque-o como **indisponível**, não como
+aprovado. Informe a verificação e o escopo exatos, por exemplo: `executável do
+OBS ausente`, `fonte de câmera indisponível`, `plugin não compilado porque
+libobs ou OpenCV estavam ausentes`, `biblioteca de execução do OpenCV ausente`,
+`plugin não aparece nos Filtros do OBS` ou `backend gráfico indisponível`.
+Anexe o comando ou observação da interface e o diagnóstico/log, com plataforma,
+versão do OBS se conhecida, status do build do plugin e etapas não tentadas.
+Relate separadamente as evidências de dependência/configuração/build/instalação
+do plugin e o resultado do teste de execução no OBS. Não declare detecção,
+pan/crop/zoom, retorno sem pessoas ou limpeza aprovados sem observá-los no OBS.

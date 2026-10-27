@@ -72,10 +72,10 @@ require_text("${ci}" "ctest --test-dir build/opencv-tests -R person_detector --o
 
 file(READ "${smoke}" procedure)
 foreach(required IN ITEMS "church_director_filter" "Synthetic target mode"
-                          "clean profile" "test pattern" "initial zoom-in"
-                          "ramp" "continued pan" "continued crop"
-                          "disable" "remove" "re-add" "three times"
-                          "OBS log" "unavailable" "unit/layout")
+                          "perfil OBS limpo" "padrão de teste" "rampa inicial de"
+                          "rampa" "pan" "crop" "Desative" "remova"
+                          "adicione-o novamente" "três vezes" "log"
+                          "indisponível" "unitária/layout")
   string(FIND "${procedure}" "${required}" offset)
   if(offset LESS 0)
     message(FATAL_ERROR "Smoke procedure omits milestone contract: ${required}")
@@ -83,15 +83,16 @@ foreach(required IN ITEMS "church_director_filter" "Synthetic target mode"
 endforeach()
 
 file(READ "${real_smoke}" real_procedure)
-foreach(required IN ITEMS "church_director_filter" "clean OBS profile"
-                          "camera source" "Real person tracking" "default"
+foreach(required IN ITEMS "church_director_filter" "perfil OBS limpo"
+                          "fonte de câmera" "Real person tracking" "padrão"
                           "RGBA" "BGRA" "BGRX" "BGR3" "NV12" "I420"
-                          "detection" "pan" "crop" "zoom"
-                          "zoom motion only when the target framing requires it"
-                          "multiple people" "Windows camera privacy" "macOS camera privacy"
-                          "Linux device/portal permissions"
-                          "no-person" "disable" "remove" "re-add"
-                          "OBS log" "preview" "unavailable" "unit/layout")
+                          "detecção" "pan" "crop" "zoom"
+                          "espere movimento de" "zoom somente quando"
+                          "várias pessoas" "Windows" "macOS"
+                          "permissões de dispositivo/portal"
+                          "sem pessoas" "desarme" "remova"
+                          "adicione-o novamente" "três vezes" "log" "prévia"
+                          "indisponível" "unitária/")
   string(FIND "${real_procedure}" "${required}" offset)
   if(offset LESS 0)
     message(FATAL_ERROR "Real-camera smoke procedure omits milestone contract: ${required}")
@@ -99,17 +100,19 @@ foreach(required IN ITEMS "church_director_filter" "clean OBS profile"
 endforeach()
 
 file(READ "${readme}" readme_text)
-foreach(required IN ITEMS "Real person tracking" "OpenCV" "No model download"
-                          "camera source" "obs-real-camera.md" "disarmed by default"
-                          "Toggle Church Director tracking" "physical PTZ controller")
+foreach(required IN ITEMS "Rastreamento real de pessoas" "OpenCV"
+                          "baixar modelos" "fonte da câmera" "obs-real-camera.md"
+                          "desarmado" "Toggle Church Director tracking"
+                          "controle PTZ físico")
   require_text("${readme_text}" "${required}" "README real-mode documentation")
 endforeach()
 
 file(READ "${building}" building_text)
-foreach(required IN ITEMS "OpenCV" "libobs" "no model download" "Windows"
-                          "macOS" "OpenCV >= 4.5" "camera privacy"
-                          "Linux device/portal permissions" "unavailable" "obs-real-camera.md"
-                          "Toggle Church Director tracking" "physical PTZ controller")
+foreach(required IN ITEMS "OpenCV" "libobs" "baixar modelos" "Windows"
+                          "macOS" "OpenCV >= 4.5" "Privacidade da câmera"
+                          "permissões de dispositivo/portal" "indisponível"
+                          "obs-real-camera.md" "Toggle Church Director tracking"
+                          "botão físico da PTZ")
   require_text("${building_text}" "${required}" "Build guide real-mode documentation")
 endforeach()
 

@@ -1,59 +1,60 @@
-# iPhone camera through Camo on Windows
+# Câmera do iPhone usando Camo no Windows
 
-This smoke test uses an iPhone as a regular OBS video-capture source. It is
-useful when a physical webcam or PTZ camera is not available.
+Este teste usa um iPhone como uma fonte comum de captura de vídeo do OBS. Ele
+é útil quando não há uma webcam física ou uma câmera PTZ disponível.
 
-## Install and connect
+## Instalar e conectar
 
-1. Install **Camo Studio for Windows** from the official Camo download page.
-2. Install **Camo Camera** on the iPhone.
-3. Connect the iPhone to Windows with USB first. Unlock the phone and accept
-   **Trust This Computer** if iOS asks.
-4. Open Camo Camera on the iPhone and Camo Studio on Windows. Select the iPhone
-   and confirm that its live preview is visible.
-5. Keep the phone stable in landscape orientation with the rear camera aimed at
-   the service area. USB is preferred for a fixed church installation; Wi-Fi
-   can be used after the USB path works.
+1. Instale o **Camo Studio para Windows** pela página oficial de downloads do Camo.
+2. Instale o **Camo Camera** no iPhone.
+3. Conecte o iPhone ao Windows por USB primeiro. Desbloqueie o telefone e aceite
+   **Confiar neste computador** quando o iOS solicitar.
+4. Abra o Camo Camera no iPhone e o Camo Studio no Windows. Selecione o iPhone
+   e confirme que a prévia ao vivo está visível.
+5. Mantenha o telefone estável, na horizontal, com a câmera traseira apontada
+   para a área do culto. USB é recomendado para uma instalação fixa na igreja;
+   Wi-Fi pode ser usado depois que o caminho USB funcionar.
 
-## Add the source to OBS
+## Adicionar a fonte no OBS
 
-1. In **Sources**, add **Video Capture Device**.
-2. Select `Camo Camera` (the exact label can include `Camo`).
-3. Use 1280x720 or 1920x1080 at 30 FPS, depending on the available USB and CPU
-   headroom.
-4. Add the `Church Director` filter to this Camo source. The filter and its
-   `Toggle` hotkey must belong to the same parent source; a hotkey assigned to
-   an unrelated `Image` source will not control the camera source.
-5. Leave **Synthetic** unchecked for real iPhone video. Leave tracking disarmed
-   until the operator is ready, then use the configured `Toggle` key to arm it.
-6. Map the same keyboard key to the PTZ controller macro when the operator needs
-   a physical arm/disarm button.
+1. Em **Fontes**, adicione **Dispositivo de captura de vídeo**.
+2. Selecione `Camo Camera` (o nome exato pode incluir `Camo`).
+3. Use 1280x720 ou 1920x1080 a 30 FPS, de acordo com a capacidade disponível
+   de USB e CPU.
+4. Adicione o filtro `Church Director` a esta fonte do Camo. O filtro e o
+   atalho `Toggle` devem pertencer à mesma fonte pai; um atalho atribuído a
+   uma fonte `Image` diferente não controlará a fonte da câmera.
+5. Deixe **Synthetic** desmarcado para o vídeo real do iPhone. Deixe o
+   rastreamento desarmado até o operador estar pronto e então use a tecla
+   `Toggle` configurada para armá-lo.
+6. Associe a mesma tecla à macro do controle PTZ quando o operador precisar de
+   um botão físico para ativar/desativar rapidamente.
 
-Church Director performs virtual pan/crop/zoom inside OBS. It does not physically
-   move the iPhone or send VISCA/IP/serial commands to a PTZ head.
+O Church Director executa pan/crop/zoom virtual dentro do OBS. Ele não move
+fisicamente o iPhone nem envia comandos VISCA, serial ou IP para uma cabeça PTZ.
 
-## Verification
+## Verificação
 
-- The OBS preview shows the live iPhone feed before the filter is armed.
-- Pressing the configured toggle key once logs `Church Director: tracking ARMED`.
-- Pressing it again logs `Church Director: tracking DISARMED` and returns the
-  source to pass-through behavior.
-- With a real person in view and tracking armed, the filter can change the
-  virtual crop. A static image or a person inside the dead-zone may show no
-  visible movement even though the hotkey is working.
+- A prévia do OBS mostra o vídeo ao vivo do iPhone antes de armar o filtro.
+- Pressionar a tecla de alternância uma vez registra `Church Director: tracking ARMED`.
+- Pressioná-la novamente registra `Church Director: tracking DISARMED` e retorna
+  a fonte ao comportamento de passagem sem alteração.
+- Com uma pessoa real visível e o rastreamento armado, o filtro pode alterar o
+  crop virtual. Uma imagem parada ou uma pessoa dentro da zona morta pode não
+  mostrar movimento visível mesmo quando o atalho está funcionando.
 
-## Troubleshooting
+## Solução de problemas
 
-- If `Camo Camera` is missing, unlock the iPhone, keep Camo Camera open, retry
-  the USB connection, and accept the trust prompt.
-- Close other applications that may already be using the phone camera.
-- Test USB before Wi-Fi. For Wi-Fi, keep the phone and PC on the same network.
-- If the log shows `ARMED`/`DISARMED` but the image does not move, verify that
-  the filter is on the live Camo source, **Synthetic** is off, and the person is
-  outside the dead-zone. The detector is not a face recognizer.
+- Se `Camo Camera` não aparecer, desbloqueie o iPhone, mantenha o Camo Camera
+  aberto, tente novamente a conexão USB e aceite o aviso de confiança.
+- Feche outros aplicativos que possam estar usando a câmera do telefone.
+- Teste USB antes do Wi-Fi. No Wi-Fi, mantenha telefone e computador na mesma rede.
+- Se o log mostrar `ARMED`/`DISARMED`, mas a imagem não se mover, confirme que
+  o filtro está na fonte Camo ao vivo, que **Synthetic** está desligado e que a
+  pessoa está fora da zona morta. O detector não é um reconhecedor facial.
 
-Official references:
+Referências oficiais:
 
-- [OBS smartphone camera guide](https://obsproject.com/kb/smartphone-camera-guide)
-- [Camo Studio downloads](https://camo.com/downloads)
-- [Camo Camera on the App Store](https://apps.apple.com/us/app/camo-camera/id1514199064)
+- [Guia de câmera de smartphone do OBS](https://obsproject.com/kb/smartphone-camera-guide)
+- [Downloads do Camo Studio](https://camo.com/downloads)
+- [Camo Camera na App Store](https://apps.apple.com/us/app/camo-camera/id1514199064)

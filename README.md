@@ -1,109 +1,109 @@
 <div align="center">
-  <img src="assets/church-director-logo.svg" alt="Church Director camera and cross logo" width="240">
-  <h1>Church Director for OBS</h1>
-  <p>Automatic, operator-controlled framing for live church services.</p>
+  <img src="assets/church-director-logo.svg" alt="Logo de câmera e cruz do Church Director" width="240">
+  <h1>Church Director para OBS</h1>
+  <p>Enquadramento automático, controlado pelo operador, para transmissões de cultos.</p>
   <p>
-    <a href="docs/smoke-tests/obs-real-camera.md">Real camera test</a> ·
+    <a href="docs/smoke-tests/obs-real-camera.md">Teste com câmera real</a> ·
     <a href="docs/smoke-tests/iphone-camo-windows.md">iPhone + Camo</a> ·
-    <a href="docs/development/building.md">Build guide</a>
+    <a href="docs/development/building.md">Guia de compilação</a>
   </p>
 </div>
 
-Church Director is an OBS Studio video filter that detects a person in a camera source and keeps that target inside a bounded virtual frame. The real-tracking path copies supported OBS frames into an asynchronous worker, uses OpenCV's built-in HOG person detector, and drives a smooth pan, crop, and zoom state.
+O Church Director é um filtro de vídeo do OBS Studio que detecta uma pessoa na fonte da câmera e mantém o alvo dentro de um enquadramento virtual limitado. O caminho de rastreamento real copia os frames compatíveis do OBS para um worker assíncrono, usa o detector de pessoas HOG integrado ao OpenCV e controla movimentos suaves de pan, crop e zoom.
 
-| Area | Current behavior |
+| Área | Comportamento atual |
 | --- | --- |
-| Tracking | Real person tracking by default, with a synthetic target mode for deterministic diagnostics |
-| Safety | Tracking starts disarmed and should be armed deliberately with the OBS hotkey or the exposed **Tracking armed** setting |
-| Camera motion | Virtual pan/crop/zoom inside OBS; it does not send physical PTZ commands |
-| Plugin id | `church_director_filter` |
-| License | GNU GPL v2 or later |
+| Rastreamento | Rastreamento real de pessoas por padrão, com modo de alvo sintético para diagnósticos determinísticos |
+| Segurança | O rastreamento começa desarmado e deve ser ativado deliberadamente pelo atalho do OBS ou pela opção **Tracking armed** |
+| Movimento da câmera | Pan/crop/zoom virtual dentro do OBS; não envia comandos para uma PTZ física |
+| ID do plugin | `church_director_filter` |
+| Licença | GNU GPL v2 ou posterior |
 
-## What Church Director does
+## O que o Church Director faz
 
-- Finds a visible person in the source and follows the locked target without immediately switching to a more distant person with a higher confidence score.
-- Applies bounded pan, crop, and zoom motion while preserving a dead zone and a neutral fallback when tracking is unavailable.
-- Keeps frame detection off while disarmed, so the operator can choose exactly when automatic framing is active.
-- Accepts RGBA, BGRA, BGRX, BGR3, NV12, and I420 frames when their planes and strides are valid; malformed or unsupported frames fail closed to neutral tracking.
+- Encontra uma pessoa visível na fonte e acompanha o alvo bloqueado sem trocar imediatamente para uma pessoa mais distante com maior confiança.
+- Aplica movimentos limitados de pan, crop e zoom, preservando uma zona morta e um retorno neutro quando o rastreamento não está disponível.
+- Mantém a detecção desligada enquanto está desarmado, para que o operador escolha exatamente quando o enquadramento automático ficará ativo.
+- Aceita frames RGBA, BGRA, BGRX, BGR3, NV12 e I420 quando planos, dimensões e strides são válidos; frames malformados ou incompatíveis falham de forma segura, retornando ao rastreamento neutro.
 
-### Important: this is virtual PTZ
+### Importante: este é um PTZ virtual
 
-The current plugin changes the framing of the video inside OBS. It does **not** move a physical PTZ camera. A physical PTZ controller can still be useful as a fast arm/disarm button when its macro sends the same shortcut configured in OBS, but camera movement remains manual until a separate PTZ integration is added.
+O plugin atual altera o enquadramento do vídeo dentro do OBS. Ele **não** movimenta uma câmera PTZ física. Um controle PTZ pode ser usado como botão rápido de ativar/desativar quando sua macro envia o mesmo atalho configurado no OBS, mas o movimento físico continua manual até existir uma integração PTZ separada.
 
-## Quick start on Windows and OBS
+## Início rápido no Windows e no OBS
 
-### 1. Add a camera source
+### 1. Adicione uma fonte de câmera
 
-1. Open OBS and add **Video Capture Device** to the scene.
-2. Select the camera, capture card, or `Camo Camera` device.
-3. Confirm that the source shows a stable picture before adding the filter.
+1. Abra o OBS e adicione **Dispositivo de captura de vídeo** à cena.
+2. Selecione a câmera, a placa de captura ou o dispositivo `Camo Camera`.
+3. Confirme que a fonte mostra uma imagem estável antes de adicionar o filtro.
 
-For an iPhone camera, follow [iPhone through Camo on Windows](docs/smoke-tests/iphone-camo-windows.md). Camo Studio exposes the phone as a normal OBS video-capture device.
+Para usar um iPhone como câmera, siga o [guia do iPhone com Camo no Windows](docs/smoke-tests/iphone-camo-windows.md). O Camo Studio expõe o telefone como um dispositivo normal de captura de vídeo do OBS.
 
-### 2. Add Church Director to that same source
+### 2. Adicione o Church Director à mesma fonte
 
-1. Right-click the camera source and choose **Filters**.
-2. Add the **Church Director** effect filter.
-3. Leave **Synthetic** unchecked for a real camera.
-4. Leave **Enabled** checked, then start with the default motion values.
+1. Clique com o botão direito na fonte da câmera e escolha **Filtros**.
+2. Adicione o filtro de efeito **Church Director**.
+3. Deixe **Synthetic** desmarcado para uma câmera real.
+4. Deixe **Enabled** marcado e comece com os valores padrão de movimento.
 
-The filter must be attached to the same OBS source that contains the camera frames. A separate browser source or a different scene source will not provide frames to the detector.
+O filtro precisa estar na mesma fonte do OBS que contém os frames da câmera. Uma fonte de navegador separada ou uma fonte de outra cena não fornecerá frames ao detector.
 
-### 3. Configure the tracking shortcut
+### 3. Configure o atalho de rastreamento
 
-1. Open **Settings → Hotkeys** in OBS.
-2. Find **Toggle Church Director tracking**.
-3. Assign a keyboard key that is easy to reach but unlikely to be pressed accidentally.
-4. If desired, map the same shortcut to a physical PTZ controller button or to its Windows macro software.
+1. Abra **Configurações → Atalhos** no OBS.
+2. Encontre **Toggle Church Director tracking**.
+3. Escolha uma tecla fácil de alcançar, mas difícil de apertar por acidente.
+4. Se quiser, associe o mesmo atalho a um botão do controle PTZ físico ou ao software de macros do Windows.
 
-Tracking is **disarmed by default**. Press the shortcut once to arm it and watch the status/logs; press it again to disarm before taking manual control of the camera. The filter also exposes **Tracking armed** in its properties for setup and diagnostics, so leave it off unless automatic framing is intentional. The shortcut is a safety control for the OBS filter, not a command that moves the physical PTZ head.
+O rastreamento começa **desarmado**. Pressione o atalho uma vez para armá-lo e observe o status/log; pressione novamente para desarmar antes de assumir o controle manual da câmera. O filtro também oferece a opção **Tracking armed** em suas propriedades para configuração e diagnóstico; deixe-a desligada quando o enquadramento automático não for desejado. O atalho controla a segurança do filtro no OBS, não movimenta a cabeça PTZ física.
 
-## Test without a camera
+## Teste sem câmera
 
-You can validate the filter controls and motion engine without a camera:
+É possível validar os controles do filtro e o motor de movimento sem ter uma câmera:
 
-1. Add an image or other stable video source to OBS.
-2. Add the Church Director filter.
-3. Enable **Synthetic** and keep **Enabled** checked.
-4. Use the tracking hotkey to arm and disarm the filter.
-5. Confirm that the preview responds to the synthetic target and that disarming returns to neutral pass-through behavior.
+1. Adicione uma imagem ou outra fonte de vídeo estável ao OBS.
+2. Adicione o filtro Church Director.
+3. Ative **Synthetic** e mantenha **Enabled** marcado.
+4. Use o atalho de rastreamento para armar e desarmar o filtro.
+5. Confirme que a prévia responde ao alvo sintético e que, ao desarmar, volta ao comportamento neutro de passagem da fonte.
 
-Synthetic mode is a deterministic diagnostic path. It proves the filter, hotkey, and virtual-motion path are connected; it does not prove that a real camera can detect a person. Use the [synthetic-camera smoke test](docs/smoke-tests/obs-synthetic-camera.md) for the exact checklist.
+O modo sintético é um caminho de diagnóstico determinístico. Ele prova que o filtro, o atalho e o movimento virtual estão conectados; não prova que uma câmera real conseguirá detectar uma pessoa. Use o [teste com câmera sintética](docs/smoke-tests/obs-synthetic-camera.md) para seguir a lista completa.
 
-## Safe operation
+## Operação segura
 
-| State | What to expect | Operator action |
+| Estado | O que esperar | Ação do operador |
 | --- | --- | --- |
-| Disarmed | Source passes through; no frame copy or detector work is performed | Use this state for setup and manual PTZ movement |
-| Armed, target found | The locked person drives bounded virtual framing | Keep the target visible and watch for unwanted scene changes |
-| Armed, target stale/lost | Motion is held or returns toward neutral according to the configured stale/dead-zone behavior | Disarm, correct the shot, then re-arm deliberately |
-| Wrong target | Spatial lock prevents an immediate jump to a distant higher-confidence person | Disarm and re-arm when you intentionally want to acquire someone else |
+| Desarmado | A fonte passa sem alteração; nenhum frame é copiado e nenhum detector é executado | Use este estado durante a configuração e o movimento manual da PTZ |
+| Armado, alvo encontrado | A pessoa bloqueada controla o enquadramento virtual limitado | Mantenha o alvo visível e observe mudanças indesejadas na cena |
+| Armado, alvo desatualizado/perdido | O movimento é mantido ou retorna ao neutro conforme a zona morta e o tempo de desatualização configurados | Desarme, corrija o enquadramento e arme novamente de forma deliberada |
+| Alvo errado | O bloqueio espacial evita uma troca imediata para uma pessoa distante com maior confiança | Desarme e arme novamente quando quiser adquirir outra pessoa |
 
-The HOG detector is CPU-based and works best with visible, upright people at a useful scale. It is not a face recognizer and may miss occluded, tiny, backlit, or unusual poses. Minimum zoom is fixed at `1.0` by the current motion engine; the other motion controls remain editable.
+O detector HOG usa CPU e funciona melhor com pessoas visíveis, de pé e em tamanho útil. Ele não é um reconhecedor facial e pode perder pessoas ocultas, pequenas, contra a luz ou em poses incomuns. O zoom mínimo é fixo em `1.0` no motor de movimento atual; os demais controles continuam editáveis.
 
-## Verification and troubleshooting
+## Verificação e solução de problemas
 
-- **No preview change:** confirm the filter is attached to the camera source, **Enabled** is checked, and **Synthetic** is enabled when testing without a camera.
-- **Real camera does not track:** leave **Synthetic** unchecked, verify that the source shows a person clearly, and run the [real-camera smoke test](docs/smoke-tests/obs-real-camera.md).
-- **Hotkey appears to do nothing:** check that OBS shows a binding for **Toggle Church Director tracking**, press it while OBS has focus, and confirm that the status/log changes from `DISARMED` to `ARMED`.
-- **Tracking switches people:** use the deliberate disarm/re-arm cycle to acquire another target; spatial locking intentionally resists distant higher-confidence replacements.
-- **No camera available:** use [synthetic mode](docs/smoke-tests/obs-synthetic-camera.md) to verify the control and virtual-motion path, then perform the real-camera test when a source is available.
-- **iPhone source missing:** complete the [Camo iPhone setup](docs/smoke-tests/iphone-camo-windows.md), prefer USB for a stable service connection, and select `Camo Camera` in OBS.
+- **A prévia não muda:** confirme que o filtro está na fonte da câmera, que **Enabled** está marcado e que **Synthetic** está ativo quando o teste for feito sem câmera.
+- **A câmera real não acompanha:** deixe **Synthetic** desmarcado, verifique se a pessoa aparece com clareza e execute o [teste com câmera real](docs/smoke-tests/obs-real-camera.md).
+- **O atalho parece não fazer nada:** confirme que existe uma associação para **Toggle Church Director tracking**, pressione a tecla com o OBS em foco e verifique se o status/log muda de `DISARMED` para `ARMED`.
+- **O rastreamento troca de pessoa:** use o ciclo deliberado de desarmar e armar novamente; o bloqueio espacial foi feito para resistir a substituições distantes com maior confiança.
+- **Não há câmera disponível:** use o [modo sintético](docs/smoke-tests/obs-synthetic-camera.md) para verificar controle e movimento virtual; faça o teste real quando tiver uma fonte de câmera.
+- **A fonte do iPhone não aparece:** conclua a [configuração do Camo com iPhone](docs/smoke-tests/iphone-camo-windows.md), prefira USB para uma conexão estável durante o culto e selecione `Camo Camera` no OBS.
 
-The real-camera test records detector logs, visible pan/crop motion, zoom motion only when the target framing requires it, repeated cleanup, and the fail-closed behavior. A passing unit/layout suite is not an OBS runtime result.
+O teste com câmera real registra logs do detector, movimento visível de pan/crop, zoom somente quando o enquadramento exigir, limpeza repetida e comportamento seguro diante de falhas. Uma suíte de testes unitários/layout aprovada não é um resultado de execução dentro do OBS.
 
-## Documentation map
+## Mapa da documentação
 
-| Guide | Use it when... |
+| Guia | Use quando... |
 | --- | --- |
-| [Camo iPhone smoke test](docs/smoke-tests/iphone-camo-windows.md) | You want to use an iPhone as the OBS camera |
-| [Real-camera smoke test](docs/smoke-tests/obs-real-camera.md) | You have a camera and want to prove real person tracking |
-| [Synthetic-camera smoke test](docs/smoke-tests/obs-synthetic-camera.md) | You need deterministic validation without a camera |
-| [Development build guide](docs/development/building.md) | You need to build or install the plugin on a host |
+| [Teste do Camo com iPhone](docs/smoke-tests/iphone-camo-windows.md) | Você quer usar um iPhone como câmera do OBS |
+| [Teste com câmera real](docs/smoke-tests/obs-real-camera.md) | Você tem uma câmera e quer provar o rastreamento real de pessoas |
+| [Teste com câmera sintética](docs/smoke-tests/obs-synthetic-camera.md) | Você precisa validar de forma determinística sem câmera |
+| [Guia de compilação](docs/development/building.md) | Você precisa compilar ou instalar o plugin |
 
-## Build and verification
+## Compilação e verificação
 
-The dependency-free unit preset requires CMake 3.21 or newer, Ninja, and a C++20 compiler. These checks do not require OBS, OpenCV, a GPU, a camera, models, or network access. The suite includes the OBS-independent filter-state seam and an install-layout fixture.
+O preset de testes unitários sem dependências exige CMake 3.21 ou posterior, Ninja e um compilador C++20. Esses testes não exigem OBS, OpenCV, GPU, câmera, modelos ou acesso à rede. A suíte inclui a camada de estado do filtro independente do OBS e um fixture do layout de instalação.
 
 ```sh
 cmake --preset unit-tests
@@ -111,7 +111,7 @@ cmake --build --preset unit-tests
 ctest --test-dir build/unit-tests --output-on-failure
 ```
 
-The optional Linux `opencv-tests` preset enables the OBS-independent HOG detector test. It requires OpenCV >= 4.5, but does not require OBS/libobs:
+O preset opcional `opencv-tests` no Linux ativa o teste do detector HOG independente do OBS. Ele exige OpenCV >= 4.5, mas não exige OBS/libobs:
 
 ```sh
 cmake --preset opencv-tests
@@ -119,16 +119,16 @@ cmake --build --preset opencv-tests
 ctest --test-dir build/opencv-tests -R person_detector --output-on-failure
 ```
 
-See [the development build guide](docs/development/building.md) for host-specific plugin builds and CI evidence. CI runs the unit suite on every pushed branch and pull request; the Linux plugin job records its separate dependency, build, and install outcome. A unit/layout pass does not constitute a real plugin build or an OBS smoke test.
+Consulte o [guia de compilação](docs/development/building.md) para builds específicos de cada sistema e evidências do CI. O CI executa a suíte unitária a cada branch e pull request enviados; o job do plugin Linux registra separadamente o resultado das dependências, compilação e instalação. Uma suíte unitária/layout aprovada não equivale a um build real do plugin nem a um teste no OBS.
 
-### Host plugin notes
+### Observações sobre o plugin por sistema
 
-Use the `plugin-windows`, `plugin-linux`, or `plugin-macos` preset where its generator is available. Install OBS/libobs development files and OpenCV >= 4.5 (core, imgproc, and objdetect) for the target platform first. The plugin presets turn `BUILD_OBS_PLUGIN=ON`; configuration fails if the generator, `libobs`, or OpenCV is unavailable. No model download, network access, or cloud credential is required.
+Use o preset `plugin-windows`, `plugin-linux` ou `plugin-macos` quando houver um gerador compatível. Instale primeiro os arquivos de desenvolvimento do OBS/libobs e o OpenCV >= 4.5 (módulos core, imgproc e objdetect). Os presets do plugin ativam `BUILD_OBS_PLUGIN=ON`; a configuração falha se o gerador, `libobs` ou OpenCV não estiver disponível. Não é necessário baixar modelos, acessar a rede ou usar credenciais de nuvem.
 
-- On Windows and Linux, the effect and English locale are installed under the module data directory.
-- On macOS, the module is installed as `church-director.plugin` with resources inside `Contents/Resources/effects` and `Contents/Resources/locale`, matching the OBS plugin bundle layout.
-- Linux modules use `${CMAKE_INSTALL_LIBDIR}/obs-plugins` by default, including configured multiarch library directories. Override it with `CHURCH_DIRECTOR_LINUX_MODULE_DESTINATION` when packaging requires a different destination.
+- No Windows e no Linux, o efeito e o locale em inglês são instalados no diretório de dados do módulo.
+- No macOS, o módulo é instalado como `church-director.plugin`, com recursos em `Contents/Resources/effects` e `Contents/Resources/locale`, seguindo o layout de bundle do OBS.
+- Os módulos Linux usam `${CMAKE_INSTALL_LIBDIR}/obs-plugins` por padrão, incluindo diretórios multiarch configurados. Substitua por `CHURCH_DIRECTOR_LINUX_MODULE_DESTINATION` quando o empacotamento exigir outro destino.
 
-## Licensing and attribution
+## Licença e atribuições
 
-This project is licensed under GNU GPL version 2 or, at your option, any later version. See [LICENSE](LICENSE) and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for the full terms and third-party/template attribution.
+Este projeto é licenciado sob a GNU GPL versão 2 ou, a seu critério, qualquer versão posterior. Consulte [LICENSE](LICENSE) e [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) para os termos completos e as atribuições de terceiros/templates.
